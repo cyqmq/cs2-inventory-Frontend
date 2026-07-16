@@ -1,0 +1,7 @@
+node_modules/
+.env
+.react-router/
+build/
+dist-electron/
+*.tsbuildinfo
+*.js.map
