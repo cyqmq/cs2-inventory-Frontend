@@ -13,10 +13,8 @@ import {
 } from "~/components/hooks/use-inventory-item";
 import { useNameItemString } from "~/components/hooks/use-name-item";
 import { useTimer } from "~/components/hooks/use-timer";
-import {
-  ApiActionUnlockCaseActionData,
-  ApiActionUnlockCaseUrl
-} from "~/routes/api.action.unlock-case._index";
+import { ApiActionUnlockCaseUrl } from "~/data/api-urls";
+import type { ApiActionUnlockCaseActionData } from "~/data/sync-types";
 import { dispatchSyncError, sync } from "~/sync";
 import { unlockNonSpecialItem } from "~/utils/economy";
 import { postJson } from "~/utils/fetch";

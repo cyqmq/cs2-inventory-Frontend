@@ -139,8 +139,8 @@ export function InventoryItem({
 
   const isEquippable =
     (item.modelKey === undefined ||
-      !inventoryItemEquipHideModel.includes(item.modelKey)) &&
-    !inventoryItemEquipHideType.includes(item.type) &&
+      !(inventoryItemEquipHideModel || []).includes(item.modelKey)) &&
+    !(inventoryItemEquipHideType || []).includes(item.type) &&
     !item.isSealed();
   const canEquip =
     isEquippable &&

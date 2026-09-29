@@ -9,8 +9,8 @@ import {
   CS2InventorySpec,
   ensure
 } from "@ianlucas/cs2-lib";
+import type { ClientInitData, ClientRules } from "~/api-client";
 import {
-  ContextType,
   ReactNode,
   createContext,
   useContext,
@@ -21,12 +21,13 @@ import { useInventoryFilterState } from "~/components/hooks/use-inventory-filter
 import { useInventoryState } from "~/components/hooks/use-inventory-state";
 import { useTranslation } from "~/components/hooks/use-translation";
 import { SyncAction } from "~/data/sync";
-import type { loader } from "~/root";
+import type { ViewerServerStatus } from "~/data/viewer";
 import { pushToSync, sync } from "~/sync";
 import { updateEconomyLanguage } from "~/utils/economy";
 import {
   getCharmDetachmentsToDisplay,
-  getFreeItemsToDisplay
+  getFreeItemsToDisplay,
+  safeLoadInventory
 } from "~/utils/inventory";
 import {
   cacheInventoryData,
@@ -38,20 +39,19 @@ import {
   sortItemsByEquipped,
   transform
 } from "~/utils/inventory-transform";
-import { SerializeFrom } from "~/utils/misc";
 import { cacheAuthenticatedUserId } from "~/utils/user-cached-data";
 import { viewerClientAvailability } from "~/utils/viewer-availability";
 
-const AppContext = createContext<
-  | ({
-      inventory: CS2Inventory;
-      inventoryFilter: ReturnType<typeof useInventoryFilterState>;
-      items: TransformedInventoryItems;
-      setInventory: (value: CS2Inventory) => void;
-      translation: ReturnType<typeof useTranslation>;
-    } & SerializeFrom<typeof loader>)
-  | null
->(null);
+interface AppContextValue extends Omit<ClientInitData, "rules"> {
+  inventory: CS2Inventory;
+  inventoryFilter: ReturnType<typeof useInventoryFilterState>;
+  items: TransformedInventoryItems;
+  setInventory: (value: CS2Inventory) => void;
+  translation: ReturnType<typeof useTranslation>;
+  rules: ResolvedClientRules;
+}
+
+const AppContext = createContext<AppContextValue | null>(null);
 
 export function useAppContext() {
   return ensure(
@@ -64,7 +64,18 @@ export function useTranslate() {
   return useAppContext().translation.translate;
 }
 
-export function useRules() {
+/**
+ * The rules as every component sees them: `ClientRules` with the two
+ * unimplemented #527 limits and the server-side viewer verdict resolved by
+ * `AppProvider` before they reach the tree.
+ */
+export type ResolvedClientRules = ClientRules & {
+  inventoryItemMaxPatches: number;
+  inventoryItemMaxStickers: number;
+  viewer: ViewerServerStatus;
+};
+
+export function useRules(): ResolvedClientRules {
   return useAppContext().rules;
 }
 
@@ -89,20 +100,38 @@ export function useInventoryFilter() {
   return useAppContext().inventoryFilter;
 }
 
+interface AppProviderProps extends Omit<ClientInitData, "rules"> {
+  children: ReactNode;
+  rules: ClientRules;
+}
+
 export function AppProvider({
   children,
   preferences,
   rules,
   user
-}: Omit<
-  NonNullable<ContextType<typeof AppContext>>,
-  "inventory" | "inventoryFilter" | "items" | "translation" | "setInventory"
-> & {
-  children: ReactNode;
-}) {
+}: AppProviderProps) {
+  // Upstream #527 added these two limits with a default of -1 ("use the game's
+  // limit") and #631 has the server probe the viewer and publish the verdict.
+  // This fork's Worker implements neither, so it never sends these fields;
+  // resolve them here so every consumer sees plain values. Viewer probing
+  // itself stays entirely client-side - nothing is reported anywhere.
+  const resolvedRules: ResolvedClientRules = {
+    ...rules,
+    inventoryItemMaxPatches: rules.inventoryItemMaxPatches ?? -1,
+    inventoryItemMaxStickers: rules.inventoryItemMaxStickers ?? -1,
+    viewer:
+      rules.viewer ??
+      (rules.viewerEnabled && rules.viewerCatalog !== undefined
+        ? { available: true, catalog: rules.viewerCatalog }
+        : { available: false, reason: "disabled" })
+  };
+
   const inventorySpec = {
     data:
-      user?.inventory ??
+      (user?.inventory
+        ? safeLoadInventory(user.inventory)?.getData()
+        : undefined) ??
       (rules.appCacheInventory ? getCachedInventoryData() : undefined),
     maxItems: rules.inventoryMaxItems,
     storageUnitMaxItems: rules.inventoryStorageUnitMaxItems
@@ -120,8 +149,8 @@ export function AppProvider({
   }, [rules.assetsBaseUrl]);
 
   useEffect(() => {
-    viewerClientAvailability.setServerStatus(rules.viewer);
-  }, [rules.viewer]);
+    viewerClientAvailability.setServerStatus(resolvedRules.viewer);
+  }, [resolvedRules.viewer]);
 
   useEffect(() => {
     cacheInventoryData(inventory.stringify());
@@ -145,7 +174,7 @@ export function AppProvider({
         }
       }
       cacheAuthenticatedUserId(user.id);
-      sync.syncedAt = user.syncedAt.getTime();
+      sync.syncedAt = new Date(user.syncedAt).getTime();
     }
   }, [user]);
 
@@ -173,8 +202,8 @@ export function AppProvider({
           )
           .map((item) =>
             transform(item, {
-              models: rules.inventoryItemEquipHideModel,
-              types: rules.inventoryItemEquipHideType
+              models: rules.inventoryItemEquipHideModel || [],
+              types: rules.inventoryItemEquipHideType || []
             })
           ),
         // Default Game Items
@@ -201,7 +230,7 @@ export function AppProvider({
         items,
         translation: translation,
         preferences,
-        rules,
+        rules: resolvedRules,
         setInventory,
         user
       }}

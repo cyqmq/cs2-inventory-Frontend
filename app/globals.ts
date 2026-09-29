@@ -1,17 +1,5 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Ian Lucas. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-
 import { type CS2ItemTranslationByLanguage } from "@ianlucas/cs2-lib";
-import { type SystemTranslationByLanguage } from "~/translation.server";
 import { type ViewerStatusReport } from "~/utils/viewer-availability";
-
-interface ServerGlobals {
-  appLogoBase64Url: string | undefined;
-  itemTranslationByLanguage: CS2ItemTranslationByLanguage;
-  systemTranslationByLanguage: SystemTranslationByLanguage;
-}
 
 interface ClientGlobals {
   splash: {
@@ -20,32 +8,46 @@ interface ClientGlobals {
     n: number;
     render: () => void;
   };
-
   itemTranslationMap: CS2ItemTranslationByLanguage[string];
-  systemTranslationMap: SystemTranslationByLanguage[string];
-
+  systemTranslationMap: Record<string, string>;
   inspectedItem?: unknown;
 
   getViewerStatus?: () => ViewerStatusReport;
 }
 
-type Globals = ServerGlobals & ClientGlobals;
+/**
+ * Server-injected globals. The original server-rendered routes populated these
+ * during SSR; in the JSON-API-worker architecture nothing is injected during SSR,
+ * so these read as `undefined` at runtime and the client falls back to the
+ * regular `appLogoUrl` rule. Typed explicitly to avoid `never` inference from
+ * loader-return serialization in React Router v8.
+ */
+export interface ServerGlobals {
+  appLogoBase64Url?: string;
+  [key: string]: unknown;
+}
+
+type Globals = ClientGlobals;
 
 declare global {
-  var InventorySimulator: Globals;
   interface Window {
     InventorySimulator: Globals;
   }
 }
 
-export const isServerContext = typeof window === "undefined";
+const isBrowser = typeof window !== "undefined";
 
-const context = isServerContext ? global : window;
-if (context.InventorySimulator === undefined) {
-  context.InventorySimulator = {} as Globals;
+if (isBrowser) {
+  const context = window;
+  if (context.InventorySimulator === undefined) {
+    context.InventorySimulator = {} as Globals;
+  }
 }
 
-const globals = context.InventorySimulator;
+const globals = isBrowser
+  ? (window as Window).InventorySimulator
+  : ({} as Globals);
 
-export const serverGlobals = globals as ServerGlobals;
+export const isServerContext = !isBrowser;
+export const serverGlobals = globals as unknown as ServerGlobals;
 export const clientGlobals = globals as ClientGlobals;

@@ -1,23 +1,21 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Ian Lucas. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
+import { useLocation } from "react-router";
+import { useEffect } from "react";
 
-import { redirect } from "react-router";
-import { middleware } from "~/middleware.server";
-import type { Route } from "./+types/$";
+export async function clientLoader() {
+  return null;
+}
 
-export async function loader({ request }: Route.LoaderArgs) {
-  await middleware(request);
-  const url = new URL(request.url);
-  if (url.pathname.startsWith("/assets")) {
-    return new Response(null, {
-      status: 404,
-      headers: {
-        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-        "CDN-Cache-Control": "no-store"
-      }
-    });
-  }
-  return redirect("/");
+clientLoader.hydrate = true;
+
+export default function CatchAll() {
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.pathname.startsWith("/assets")) {
+      return;
+    }
+    window.location.href = "/";
+  }, [location]);
+
+  return null;
 }

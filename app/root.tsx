@@ -1,16 +1,9 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Ian Lucas. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type {
   LinksFunction,
-  LoaderFunctionArgs,
   ShouldRevalidateFunctionArgs
 } from "react-router";
 import {
-  data,
   Links,
   Meta,
   Outlet,
@@ -18,10 +11,9 @@ import {
   ScrollRestoration,
   useLoaderData
 } from "react-router";
-import { findRequestUser } from "./auth.server";
+
 import { AppProvider } from "./components/app-context";
 import { Background } from "./components/background";
-import { CloudflareAnalyticsScript } from "./components/cloudflare-analytics-script";
 import { Console } from "./components/console";
 import { ErrorAlert } from "./components/error-alert";
 import { Footer } from "./components/footer";
@@ -29,31 +21,19 @@ import { Header } from "./components/header";
 import { useRootLayout } from "./components/hooks/use-root-layout";
 import { Inventory } from "./components/inventory";
 import { ItemSelectorProvider } from "./components/item-selector-context";
-import { Splash } from "./components/splash";
 import { SyncIndicator } from "./components/sync-indicator";
 import { SyncWarn } from "./components/sync-warn";
-import { viewerServerAvailability } from "./data/viewer.server";
-import {
-  ASSETS_BASE_URL,
-  CLOUDFLARE_ANALYTICS_TOKEN,
-  SENTRY_CLIENT_DSN,
-  SENTRY_ENVIRONMENT,
-  SOURCE_COMMIT,
-  VIEWER_ASSETS_BASE_URL,
-  VIEWER_EMBED_URL
-} from "./env.server";
-import { middleware } from "./middleware.server";
-import { getClientRules } from "./models/rule";
-import { steamCallbackUrl, viewerKey } from "./models/rule.server";
-import { loadOrCreateUserInventory } from "./models/user.server";
-import { setMonitoringUser } from "./monitoring.client";
-import { getBackground } from "./preferences/background.server";
-import { getLanguage } from "./preferences/language.server";
-import { getToggleable } from "./preferences/toggleable.server";
-import { getSeoLinks, getSeoMeta } from "./root-seo";
-import { getSession } from "./session.server";
+import { fetchClientInit, type ClientInitData } from "./api-client";
 import styles from "./tailwind.css?url";
-import { nonEmptyString } from "./utils/misc";
+
+function hideSplash() {
+  const el = document.getElementById("splash");
+  if (el && el.style.display !== "none") {
+    el.style.opacity = "0";
+    el.style.pointerEvents = "none";
+    setTimeout(() => (el.style.display = "none"), 1000);
+  }
+}
 
 const bodyFontUrl =
   "https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wdth,wght@0,62.5..100,400..800;1,62.5..100,400..800&display=swap";
@@ -61,7 +41,6 @@ const bodyFontUrl =
 const displayFontUrl =
   "https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600&display=swap";
 
-// Please consider donating :-(
 const displayFontIAmPayingFor = "https://use.typekit.net/ojo0ltc.css";
 
 export const links: LinksFunction = () => [
@@ -81,70 +60,168 @@ export function shouldRevalidate({ currentUrl }: ShouldRevalidateFunctionArgs) {
   return true;
 }
 
-export async function loader({ request }: LoaderFunctionArgs) {
-  await middleware(request);
-  const session = await getSession(request.headers.get("Cookie"));
-  const user = await findRequestUser(request);
-  const ipCountry = request.headers.get("CF-IPCountry");
-  const { origin: appUrl, host: appSiteName } = new URL(
-    await steamCallbackUrl.get()
+export async function clientLoader(): Promise<ClientInitData> {
+  try {
+    return await fetchClientInit();
+  } catch {
+    // Same shape as the success path so `ReturnType<typeof clientLoader>`
+    // stays a single type (React Router v8 serializes a union here poorly).
+    return { rules: {}, preferences: {}, user: undefined } as unknown as ClientInitData;
+  }
+}
+
+clientLoader.hydrate = true;
+
+export function SignInModal({ onClose }: { onClose: () => void }) {
+  const [status, setStatus] = useState<"idle" | "connecting" | "error">("idle");
+  const isElectron =
+    typeof window !== "undefined" && Boolean(window.electronAPI?.steamLogin);
+
+  useEffect(() => {
+    const electronAPI = window.electronAPI;
+    if (!electronAPI?.steamLogin) {
+      return;
+    }
+    setStatus("connecting");
+    (async () => {
+      try {
+        await electronAPI.steamLogin();
+      } catch {
+        setStatus("error");
+        return;
+      }
+      window.location.href = "/";
+    })();
+  }, [isElectron]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        alignItems: "center",
+        backgroundColor: "rgba(0,0,0,0.6)",
+        display: "flex",
+        height: "100vh",
+        justifyContent: "center",
+        left: 0,
+        position: "fixed",
+        top: 0,
+        width: "100vw",
+        zIndex: 300
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          alignItems: "center",
+          backgroundColor: "#1c1c1c",
+          border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: 8,
+          color: "#f5f5f5",
+          display: "flex",
+          flexDirection: "column",
+          fontFamily: "'Exo 2', sans-serif",
+          padding: "2.5rem 3rem"
+        }}
+      >
+        <svg style={{ height: "2.5rem", marginBottom: "1.5rem" }} viewBox="0 0 140 36" xmlns="http://www.w3.org/2000/svg">
+          <g fill="none" fillRule="evenodd">
+            <path fill="#F5F5F5" d="M0 0v36h10V12.5l-5 8.5h5V26H0v-4.5l5-8.5H0zM15 0h4v36h-4zM22 0h11.5c1.1 0 2.3.3 3.5 1 1.2.6 2.1 1.7 2.6 3.2.6 1.5.9 3.6.9 6.3 0 2.7-.3 4.8-.9 6.3-.5 1.5-1.4 2.6-2.6 3.2-1.2.6-2.4 1-3.5 1H22V0zm10 19c.8 0 1.5-.2 1.9-.7.5-.5.8-1.4.8-2.8v-5c0-1.4-.3-2.3-.8-2.8-.4-.5-1.1-.7-1.9-.7h-6v12h6zM37 28h-4l7 8h4zM49 0h13c1 0 2.1.2 3.3.7 1.2.5 2.2 1.3 3 2.5.8 1.2 1.1 2.8 1.1 4.8 0 2-.3 3.6-1.1 4.8-.8 1.2-1.8 2-3 2.5-1.2.5-2.4.7-3.3.7h-9V0zm12 12c.7 0 1.3-.2 1.7-.5.5-.3.7-.9.7-1.5 0-.6-.2-1.1-.7-1.5-.4-.3-1-.5-1.7-.5h-8v4h8zM49 20h4v16h-4zM65 0h4v36h-4zM72 0h13c1 0 2.1.2 3.3.7 1.2.5 2.2 1.3 3 2.5.8 1.2 1.1 2.8 1.1 4.8 0 2-.3 3.6-1.1 4.8-.8 1.2-1.8 2-3 2.5-1.2.5-2.4.7-3.3.7h-9V0zm12 12c.7 0 1.3-.2 1.7-.5.5-.3.7-.9.7-1.5 0-.6-.2-1.1-.7-1.5-.4-.3-1-.5-1.7-.5h-8v4h8zM72 20h4v16h-4zM89 0h4l7 8 6-8h4l-9 12v14h-4V12zM105 0h4v36h-4zM112 0h11.5c1.1 0 2.3.3 3.5 1 1.2.6 2.1 1.7 2.6 3.2.6 1.5.9 3.6.9 6.3 0 2.7-.3 4.8-.9 6.3-.5 1.5-1.4 2.6-2.6 3.2-1.2.6-2.4 1-3.5 1H112V0zm10 19c.8 0 1.5-.2 1.9-.7.5-.5.8-1.4.8-2.8v-5c0-1.4-.3-2.3-.8-2.8-.4-.5-1.1-.7-1.9-.7h-6v12h6z" opacity=".7"/>
+            <path fill="#FAFAFA" d="M128 28h4l7 8h-4z"/>
+          </g>
+        </svg>
+
+        {status === "connecting" && (
+          <>
+            <div style={{ fontSize: "1rem", marginBottom: "1rem", opacity: 0.8 }}>
+              Connecting to Steam...
+            </div>
+            <div style={{
+              background: "rgba(255,255,255,0.1)",
+              borderRadius: 2,
+              height: 4,
+              overflow: "hidden",
+              width: 160
+            }}>
+              <div style={{
+                animation: "cs2-modal-progress 1.5s ease-in-out infinite",
+                background: "white",
+                borderRadius: 2,
+                height: "100%",
+                width: "30%"
+              }} />
+            </div>
+            <style>{`@keyframes cs2-modal-progress{0%{transform:translateX(-100%)}100%{transform:translateX(400%)}}`}</style>
+          </>
+        )}
+
+        {status === "error" && (
+          <div style={{ fontSize: "0.95rem", opacity: 0.7 }}>
+            Connection failed.{" "}
+            <span
+              onClick={() => setStatus("idle")}
+              style={{ color: "#4a9eff", cursor: "pointer", textDecoration: "underline" }}
+            >
+              Retry
+            </span>
+          </div>
+        )}
+
+        {status === "idle" && !isElectron && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", alignItems: "center" }}>
+            <div style={{ fontSize: "0.95rem", opacity: 0.7 }}>
+              Sign in with your Steam account
+            </div>
+            <button
+              onClick={() => {
+                window.location.href = "/sign-in/steam/callback";
+              }}
+              style={{
+                background: "#1a1a2e",
+                border: "1px solid rgba(255,255,255,0.2)",
+                borderRadius: 4,
+                color: "#f5f5f5",
+                cursor: "pointer",
+                fontSize: "0.95rem",
+                padding: "0.6rem 1.5rem"
+              }}
+            >
+              Sign in with Steam
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
-  const clientRules = await getClientRules(user?.id);
-  return data({
-    rules: {
-      ...clientRules,
-      assetsBaseUrl: nonEmptyString(ASSETS_BASE_URL),
-      viewerEmbedUrl: nonEmptyString(VIEWER_EMBED_URL),
-      viewerAssetsBaseUrl: nonEmptyString(VIEWER_ASSETS_BASE_URL),
-      cloudflareAnalyticsToken: CLOUDFLARE_ANALYTICS_TOKEN,
-      sentryClientDsn: nonEmptyString(SENTRY_CLIENT_DSN),
-      sentryEnvironment: SENTRY_ENVIRONMENT,
-      sourceCommit: SOURCE_COMMIT,
-      viewerKey: await viewerKey.get(),
-      viewer: viewerServerAvailability.getStatus(clientRules.viewerEnabled),
-      meta: { appUrl, appSiteName }
-    },
-    preferences: {
-      ...(await getBackground(session)),
-      ...(await getLanguage(session, ipCountry)),
-      ...(await getToggleable(session))
-    },
-    user:
-      user === undefined
-        ? undefined
-        : {
-            ...user,
-            inventory:
-              user.inventory !== null
-                ? (
-                    await loadOrCreateUserInventory(user.id, user.inventory, {
-                      maxItems: clientRules.inventoryMaxItems,
-                      storageUnitMaxItems:
-                        clientRules.inventoryStorageUnitMaxItems
-                    })
-                  ).getData()
-                : null
-          }
-  });
 }
 
 export default function App() {
-  const appProps = useLoaderData<typeof loader>();
+  const appProps =
+    useLoaderData<typeof clientLoader>() ??
+    ({
+      rules: {},
+      preferences: {},
+      user: undefined
+    } as ClientInitData);
   const { footer, header, inventory } = useRootLayout();
-  const userId = appProps.user?.id;
+  const [showSignIn, setShowSignIn] = useState(false);
+
+  useEffect(() => { hideSplash(); }, []);
 
   useEffect(() => {
-    setMonitoringUser(userId);
-  }, [userId]);
+    const handler = () => setShowSignIn(true);
+    window.addEventListener("cs2:sign-in", handler);
+    return () => window.removeEventListener("cs2:sign-in", handler);
+  }, []);
+
+  if (!appProps) return null;
 
   return (
     <AppProvider {...appProps}>
       <html
         className="scrollbar-gutter-stable"
-        data-language={appProps.preferences.language}
-        data-sentry-dsn={appProps.rules.sentryClientDsn}
-        data-sentry-environment={appProps.rules.sentryEnvironment}
-        lang={appProps.preferences.lang}
+        data-language={appProps.preferences?.language ?? "english"}
+        lang={appProps.preferences?.lang ?? "en"}
         onContextMenu={(event) => event.preventDefault()}
       >
         <head>
@@ -157,15 +234,8 @@ export default function App() {
             href={appProps.rules.appFaviconUrl || "/favicon.ico"}
             type={appProps.rules.appFaviconMimeType || "image/x-icon"}
           />
-          {getSeoLinks(appProps.rules).map((attributes, index) => (
-            <link key={index} {...attributes} />
-          ))}
-          {getSeoMeta(appProps.rules).map((attributes, index) => (
-            <meta key={index} {...attributes} />
-          ))}
         </head>
         <body className="overflow-y-scroll bg-stone-800">
-          <Splash />
           <Background />
           <Console />
           <SyncWarn />
@@ -179,14 +249,11 @@ export default function App() {
           {footer && <Footer />}
           <SyncIndicator />
           <ScrollRestoration />
-
-          <CloudflareAnalyticsScript
-            token={appProps.rules.cloudflareAnalyticsToken}
-          />
           <ErrorAlert />
           <Scripts />
         </body>
       </html>
+      {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
     </AppProvider>
   );
 }

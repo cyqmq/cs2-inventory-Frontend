@@ -4,30 +4,13 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useEffect, useState } from "react";
-import { clientGlobals, isServerContext, serverGlobals } from "~/globals";
+import { clientGlobals } from "~/globals";
 import type { SystemTranslationTokens } from "~/translation.server";
 import { fetchTranslation } from "~/utils/translation-api";
 
 export function useTranslation({ language }: { language: string }) {
-  function getSystemTranslationMap() {
-    return (
-      (isServerContext
-        ? (serverGlobals.systemTranslationByLanguage[language] ??
-          serverGlobals.systemTranslationByLanguage.english)
-        : clientGlobals.systemTranslationMap) ?? {}
-    );
-  }
-
-  function getItemTranslationMap() {
-    return (
-      (isServerContext
-        ? serverGlobals.itemTranslationByLanguage[language]
-        : clientGlobals.itemTranslationMap) ?? {}
-    );
-  }
-
-  const [systemMap, setSystemMap] = useState(getSystemTranslationMap());
-  const [itemMap, setItemMap] = useState(getItemTranslationMap());
+  const [systemMap, setSystemMap] = useState(clientGlobals.systemTranslationMap ?? {});
+  const [itemMap, setItemMap] = useState(clientGlobals.itemTranslationMap ?? {});
 
   function translate(token: SystemTranslationTokens, ...values: string[]) {
     return (

@@ -1,13 +1,5 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Ian Lucas. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-
 import { fail } from "@ianlucas/cs2-lib";
-import type {
-  ActionShape,
-  ApiActionSyncData
-} from "~/routes/api.action.sync._index";
+import type { ActionShape, ApiActionSyncData } from "~/data/sync-types";
 import { ApiActionSyncUrl } from "./data/sync";
 import { postJson } from "./utils/fetch";
 

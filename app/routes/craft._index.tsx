@@ -1,15 +1,9 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Ian Lucas. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-
 import { faLink } from "@fortawesome/free-solid-svg-icons";
 import { CS2BaseInventoryItem, CS2EconomyItem } from "@ianlucas/cs2-lib";
 import clsx from "clsx";
 import lzstring from "lz-string";
 import { useState } from "react";
-import { data, useLoaderData, useNavigate } from "react-router";
-import { z } from "zod";
+import { useLoaderData, useNavigate } from "react-router";
 import {
   useInventory,
   useRules,
@@ -28,9 +22,8 @@ import { ItemEditorAttributes } from "~/components/item-editor";
 import { ItemPicker } from "~/components/item-picker";
 import { Modal, ModalHeader } from "~/components/modal";
 import { SyncAction } from "~/data/sync";
-import { middleware } from "~/middleware.server";
-import { getUserBasicData } from "~/models/user.server";
-import { getMetaTitle } from "~/root-meta";
+import type { ActionShape } from "~/data/sync-types";
+import { apiGet } from "~/api-client";
 import { isItemCountable } from "~/utils/economy";
 import {
   createFakeInventoryItemFromBase,
@@ -38,56 +31,46 @@ import {
 } from "~/utils/inventory";
 import { tryOrDefault } from "~/utils/misc";
 import { range } from "~/utils/number";
-import { baseInventoryItemProps } from "~/utils/shapes";
 import { playSound } from "~/utils/sound";
-import type { Route } from "./+types/craft._index";
 
-export const meta = getMetaTitle("HeaderCraftLabel");
-
-export async function loader({ request }: Route.LoaderArgs) {
-  await middleware(request);
+export async function clientLoader({ request }: { request: Request }) {
   const url = new URL(request.url);
   const share = url.searchParams.get("share");
-  const shared = z
-    .object({
-      i: z.object({
-        ...baseInventoryItemProps,
-        statTrak: z
-          .number()
-          .optional()
-          .transform((statTrak) =>
-            statTrak !== undefined ? (0 as const) : undefined
-          )
-      }),
-      u: z.string().optional()
-    })
-    .optional()
-    .parse(
-      share !== null
-        ? JSON.parse(lzstring.decompressFromEncodedURIComponent(share))
-        : undefined
-    );
-  return data({
-    shared:
-      shared !== undefined
-        ? {
-            item: shared.i,
-            user:
-              shared.u !== undefined
-                ? await getUserBasicData(shared.u)
-                : undefined
-          }
-        : undefined,
-    uid: z
-      .string()
-      .optional()
-      .transform((uid) => (uid !== undefined ? Number(uid) : uid))
-      .parse(url.searchParams.get("uid") || undefined)
-  });
+  const uidStr = url.searchParams.get("uid");
+
+  let shared: { item: Record<string, unknown>; user?: unknown } | undefined;
+  if (share !== null) {
+    try {
+      const decompressed = JSON.parse(
+        lzstring.decompressFromEncodedURIComponent(share) || "{}"
+      );
+      let user: unknown = undefined;
+      if (decompressed.u) {
+        try {
+          user = await apiGet<unknown>(`/api/user/basic/${decompressed.u}`);
+        } catch {
+          user = undefined;
+        }
+      }
+      shared = {
+        item: decompressed.i || {},
+        user
+      };
+    } catch {
+      shared = undefined;
+    }
+  }
+
+  return {
+    shared,
+    uid: uidStr !== null ? Number(uidStr) : undefined
+  };
 }
 
+clientLoader.hydrate = true;
+
 export default function Craft() {
-  const { uid, shared } = useLoaderData<typeof loader>();
+  const { uid, shared } = useLoaderData<typeof clientLoader>();
 
   const isEditing = uid !== undefined;
   const isSharing = shared?.item !== undefined;
@@ -107,7 +90,7 @@ export default function Craft() {
     isEditing
       ? tryOrDefault(() => inventory.get(uid))
       : isSharing
-        ? createFakeInventoryItemFromBase(shared.item)
+        ? createFakeInventoryItemFromBase(shared.item as unknown as CS2BaseInventoryItem)
         : undefined
   );
 
@@ -127,7 +110,7 @@ export default function Craft() {
         type: SyncAction.Edit,
         uid,
         attributes
-      });
+      } as ActionShape);
       return navigate("/", { preventScrollReset: true });
     }
 
@@ -142,7 +125,7 @@ export default function Craft() {
       sync({
         type: SyncAction.Add,
         item: inventoryItem
-      });
+      } as ActionShape);
     });
     return navigate("/", { preventScrollReset: true });
   }
@@ -210,7 +193,7 @@ export default function Craft() {
             )}
             onClose={handleClose}
           />
-          {shared?.user !== undefined && <CraftShareUser user={shared.user} />}
+          {shared?.user !== undefined && <CraftShareUser user={shared.user as { avatar: string; name: string }} />}
           <CraftComponent {...editorProps} />
         </Modal>
       )}

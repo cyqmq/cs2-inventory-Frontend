@@ -1,10 +1,5 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Ian Lucas. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-
 import { useUser } from "~/components/app-context";
-import { ActionShape } from "~/routes/api.action.sync._index";
+import type { ActionShape } from "~/data/sync-types";
 import { pushToSync } from "~/sync";
 
 export function useSync() {

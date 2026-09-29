@@ -1,17 +1,17 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Ian Lucas. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
+import { useEffect } from "react";
+import { getApiBaseUrl } from "~/api-client";
 
-import { redirect } from "react-router";
-import { middleware } from "~/middleware.server";
-import { destroySession, getSession } from "~/session.server";
-import type { Route } from "./+types/sign-out._index";
+export async function clientLoader() {
+  return null;
+}
 
-export async function loader({ request }: Route.LoaderArgs) {
-  await middleware(request);
-  const session = await getSession(request.headers.get("cookie"));
-  throw redirect("/", {
-    headers: { "Set-Cookie": await destroySession(session) }
-  });
+clientLoader.hydrate = true;
+
+export default function SignOut() {
+  useEffect(() => {
+    const apiBase = getApiBaseUrl();
+    window.location.href = `${apiBase}/sign-out`;
+  }, []);
+
+  return null;
 }

@@ -1,13 +1,9 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Ian Lucas. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-
 import type { Config } from "@react-router/dev/config";
 
 export default {
-  // Allows any Origin: behind a TLS-terminating proxy the request URL is `http://`, so React
-  // Router's check would reject every `https://` submission. It only covers `.data` requests
-  // anyway, since every action lives in an `api.*` resource route, which it never checks.
-  allowedActionOrigins: ["**"]
+  // Pure SPA: all data comes from the JSON API worker over fetch, so there is
+  // no server bundle, no SSR pass and nothing to prerender. `index.html` is
+  // produced by the Layout in app/root.tsx.
+  ssr: false,
+  prerender: false
 } satisfies Config;

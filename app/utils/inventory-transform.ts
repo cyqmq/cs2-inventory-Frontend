@@ -30,15 +30,16 @@ const INVENTORY_ITEM_TYPE_ORDER = {
 
 export function transform(
   item: CS2InventoryItem,
-  nonEquippable = {
-    models: [] as string[],
-    types: [] as string[]
-  }
+  nonEquippable: {
+    models?: string[];
+    types?: string[];
+  } = {}
 ) {
+  const models = nonEquippable.models || [];
+  const types = nonEquippable.types || [];
   const isEquippable =
-    (item.modelKey === undefined ||
-      !nonEquippable.models.includes(item.modelKey)) &&
-    !nonEquippable.types.includes(item.type);
+    (item.modelKey === undefined || !models.includes(item.modelKey)) &&
+    !types.includes(item.type);
 
   if (!isEquippable) {
     item.equipped = undefined;

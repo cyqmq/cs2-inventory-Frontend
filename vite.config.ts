@@ -1,21 +1,25 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Ian Lucas. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-
 import { reactRouter } from "@react-router/dev/vite";
 import tailwindcss from "@tailwindcss/vite";
-import { createHash } from "crypto";
-import { readdirSync, readFileSync } from "fs";
+import { readFileSync } from "fs";
 import { dirname, relative, resolve } from "path";
-import { reactRouterHonoServer } from "react-router-hono-server/dev";
 import { minify_sync } from "terser";
 import ts from "typescript";
 import { defineConfig } from "vite";
 
+const workerUrl = process.env.WORKER_URL ?? "http://localhost:8787";
+
 export default defineConfig({
+  base: "/",
   server: {
-    port: 3000
+    port: 3000,
+    // In browser mode the app calls the API through the same origin
+    // (entry.client.tsx sets the API URL to window.location.origin), so route
+    // the API paths to the local Cloudflare Worker during development.
+    proxy: {
+      "/api": workerUrl,
+      "/sign-in": workerUrl,
+      "/healthz": workerUrl
+    }
   },
   environments: {
     client: {
@@ -47,11 +51,7 @@ export default defineConfig({
   resolve: {
     tsconfigPaths: true
   },
-  plugins: [
-    tailwindcss(),
-    !process.env.VITEST && reactRouterHonoServer(),
-    !process.env.VITEST && reactRouter()
-  ],
+  plugins: [tailwindcss(), !process.env.VITEST && reactRouter()],
   define: {
     __SPLASH_SCRIPT__: JSON.stringify(
       minify_sync(
@@ -68,29 +68,6 @@ export default defineConfig({
           }
         ).outputText
       ).code
-    ),
-    __TRANSLATION_CHECKSUM__: JSON.stringify(
-      (() => {
-        const translationsDir = resolve(process.cwd(), "app/translations");
-        const translationContents = readdirSync(translationsDir)
-          .filter((f) => f.endsWith(".ts") && f !== "index.ts")
-          .sort()
-          .map((f) => readFileSync(resolve(translationsDir, f), "utf-8"))
-          .join("");
-        const cs2LibVersion = JSON.parse(
-          readFileSync(
-            resolve(
-              process.cwd(),
-              "node_modules/@ianlucas/cs2-lib/package.json"
-            ),
-            "utf-8"
-          )
-        ).version;
-        return createHash("sha256")
-          .update(cs2LibVersion + translationContents)
-          .digest("hex")
-          .substring(0, 7);
-      })()
     ),
     __SOURCE_COMMIT__: JSON.stringify(process.env.SOURCE_COMMIT)
   }

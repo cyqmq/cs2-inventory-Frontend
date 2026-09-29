@@ -6,10 +6,8 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ClientOnly } from "remix-utils/client-only";
-import {
-  ApiActionResyncData,
-  ApiActionResyncUrl
-} from "~/routes/api.action.resync._index";
+import { ApiActionResyncUrl } from "~/data/api-urls";
+import type { ApiActionResyncData } from "~/data/sync-types";
 import { sync } from "~/sync";
 import { getJson } from "~/utils/fetch";
 import { loadOrCreateInventory } from "~/utils/inventory";

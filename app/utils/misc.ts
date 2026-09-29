@@ -3,9 +3,14 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { useLoaderData } from "react-router";
-
-export type SerializeFrom<T> = ReturnType<typeof useLoaderData<T>>;
+/**
+ * Serialized loader data. React Router v8's built-in `SerializeFrom` collapses
+ * plain interfaces to `undefined` unless they carry an index signature, so this
+ * app keeps the simpler Remix-style definition it was built for.
+ */
+export type SerializeFrom<T extends (...args: never[]) => unknown> = Awaited<
+  ReturnType<T>
+>;
 
 export function random<T>(array: T[]): T {
   return array[Math.floor(Math.random() * array.length)];

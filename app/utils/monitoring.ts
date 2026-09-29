@@ -3,7 +3,14 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { captureException, type SeverityLevel } from "@sentry/core";
+/**
+ * Console-only logging.
+ *
+ * Upstream also forwards every call to Sentry/GlitchTip. This fork runs as a
+ * pure SPA + Electron client with no telemetry backend, so the reporting half
+ * is dropped and only the console output is kept. The call signatures are
+ * unchanged so callers do not need to know about the difference.
+ */
 
 interface LogDetails {
   error?: unknown;
@@ -12,12 +19,10 @@ interface LogDetails {
 
 export function logError(message: string, details?: LogDetails) {
   console.error(message, ...toConsoleArgs(details));
-  report("error", message, details, logError);
 }
 
 export function logWarning(message: string, details?: LogDetails) {
   console.warn(message, ...toConsoleArgs(details));
-  report("warning", message, details, logWarning);
 }
 
 function toConsoleArgs({ error, extra }: LogDetails = {}) {
@@ -25,18 +30,4 @@ function toConsoleArgs({ error, extra }: LogDetails = {}) {
     ...(extra !== undefined ? [extra] : []),
     ...(error !== undefined ? [error] : [])
   ];
-}
-
-function report(
-  level: SeverityLevel,
-  message: string,
-  { error, extra }: LogDetails = {},
-  caller: (...args: never[]) => void
-) {
-  const reported = new Error(
-    message,
-    error !== undefined ? { cause: error } : undefined
-  );
-  Error.captureStackTrace?.(reported, caller);
-  captureException(reported, { extra, level });
 }

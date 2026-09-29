@@ -8,7 +8,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { MouseEvent } from "react";
 import { Links, Scripts, useRouteError } from "react-router";
 import { ClientOnly } from "remix-utils/client-only";
-import { ApiActionResetInventoryUrl } from "~/routes/api.action.reset-inventory._index";
+import { ApiActionResetInventoryUrl } from "~/data/api-urls";
 import { isOurHostname } from "~/utils/misc";
 import { confirm } from "./modal-generic";
 

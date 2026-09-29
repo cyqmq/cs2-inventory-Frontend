@@ -5,7 +5,7 @@
 
 import { faTrashCan } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSubmit } from "react-router";
 import {
   useInventory,
@@ -27,17 +27,8 @@ import { SettingsLabel } from "~/components/settings-label";
 import { backgrounds } from "~/data/backgrounds";
 import { languages } from "~/data/languages";
 import { SyncAction } from "~/data/sync";
-import { middleware } from "~/middleware.server";
-import { getMetaTitle } from "~/root-meta";
-import type { Route } from "./+types/settings._index";
-import { ApiActionPreferencesUrl } from "./api.action.preferences._index";
-
-export const meta = getMetaTitle("HeaderSettingsLabel");
-
-export async function loader({ request }: Route.LoaderArgs) {
-  await middleware(request);
-  return null;
-}
+import { ApiActionPreferencesUrl } from "~/data/api-urls";
+import { setApiBaseUrl as setClientApiBaseUrl } from "~/api-client";
 
 export default function Settings() {
   const {
@@ -66,6 +57,25 @@ export default function Settings() {
   );
   const [statsForNerds, setStatsForNerds] = useCheckbox(selectedStatsForNerds);
   const [volume, setVolume] = useStorageState("appVolume", 1);
+
+  const [serverUrl, setServerUrl] = useState("");
+  const [configPath, setConfigPath] = useState("");
+  const [isElectron, setIsElectron] = useState(false);
+
+  useEffect(() => {
+    if (window.electronAPI) {
+      setIsElectron(true);
+      window.electronAPI.getApiBaseUrl().then(setServerUrl);
+      window.electronAPI.getConfigPath().then(setConfigPath);
+    }
+  }, []);
+
+  async function handleSaveServerUrl() {
+    if (window.electronAPI && serverUrl) {
+      await window.electronAPI.setApiBaseUrl(serverUrl);
+      setClientApiBaseUrl(serverUrl);
+    }
+  }
 
   const submit = useSubmit();
   const navigate = useNavigate();
@@ -165,6 +175,32 @@ export default function Settings() {
               onChange={setPrefer2dStickerEditor}
             />
           </SettingsLabel>
+        )}
+        {isElectron && (
+          <div className="space-y-2 rounded-sm border border-neutral-500/20 bg-neutral-800/50 p-3">
+            <SettingsLabel label="后端服务器地址">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={serverUrl}
+                  onChange={(e) => setServerUrl(e.target.value)}
+                  className="flex-1 rounded-sm bg-neutral-700 px-2 py-1 text-sm text-white outline-none ring-1 ring-neutral-600 focus:ring-blue-500"
+                  placeholder="http://localhost:3000"
+                />
+                <button
+                  onClick={handleSaveServerUrl}
+                  className="rounded-sm bg-blue-600 px-3 py-1 text-sm text-white transition-all hover:bg-blue-500"
+                >
+                  保存
+                </button>
+              </div>
+            </SettingsLabel>
+            {configPath && (
+              <p className="text-xs text-neutral-400">
+                配置文件路径：{configPath}
+              </p>
+            )}
+          </div>
         )}
         {inventory.size() > 0 && (
           <button
