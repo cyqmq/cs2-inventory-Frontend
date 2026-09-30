@@ -50,15 +50,19 @@ CS2 Inventory Simulator 支持通过规则在运行时配置应用行为。所�
 | `inventoryItemAllowRemoveSticker` | boolean | `true` | 允许移除贴纸 |
 | `inventoryItemAllowApplyPatch` | boolean | `true` | 允许应用印花 |
 | `inventoryItemAllowRemovePatch` | boolean | `true` | 允许移除印花 |
-| `inventoryItemMaxStickers` | number | `-1` | 单个物品最大贴纸数；`-1` 为不限制（沿用游戏上限 5），`0` 为禁用贴纸功能 ⚠️ 未实现 |
-| `inventoryItemMaxPatches` | number | `-1` | 单个物品最大印花数，语义同 `inventoryItemMaxStickers` ⚠️ 未实现 |
-
-> ⚠️ **注意：** `inventoryItemMaxStickers` / `inventoryItemMaxPatches` 是上游 #527 新增的规则，本仓库的 Worker **尚未实现**，`/api/init` 不会下发这两个字段。前端已按可选字段处理，缺省等价于"不限制"。需要该功能时请先在 `cs2-inventory-worker-api` 的 `src/models/rule.ts` 补规则。
+| `inventoryItemMaxStickers` | number | `-1` | 单个物品最大贴纸数；`-1` 为不限制（沿用游戏上限 5），`0` 为禁用贴纸功能 |
+| `inventoryItemMaxPatches` | number | `-1` | 单个物品最大印花数，语义同 `inventoryItemMaxStickers` |
 | `inventoryItemAllowUnlockContainer` | boolean | `true` | 允许开箱 |
 | `inventoryItemAllowInspectInGame` | boolean | `true` | 允许游戏内检视 |
 | `inventoryItemAllowShare` | boolean | `true` | 允许分享物品 |
 | `inventoryItemEquipHideModel` | string-array | 空 | 禁止装备指定模型（例: `knife_flip;bayonet`） |
 | `inventoryItemEquipHideType` | string-array | 空 | 禁止装备指定类型（例: `agent;weapon`） |
+
+> `inventoryItemMaxStickers` / `inventoryItemMaxPatches` 是上游 #527 新增的规则。
+> 规则表里存的是原值（默认 `-1`），但 `/api/init` 下发的是**已经夹到游戏上限（`CS2_MAX_STICKERS` = 5）后的值**，
+> 所以客户端永远不会收到 `-1`——负值等价于 5，`0` 才是"禁用"。服务端在
+> `POST /api/action/sync`（`add` / `edit` / `apply-item-sticker` / `apply-item-patch` / `add-with-sticker`）
+> 和 `POST /api/action/import-inspect-link` 上同样强制这两个上限，不只是 UI 限制。
 
 ## Craft（合成）
 

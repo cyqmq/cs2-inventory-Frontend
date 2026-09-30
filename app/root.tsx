@@ -23,7 +23,7 @@ import { Inventory } from "./components/inventory";
 import { ItemSelectorProvider } from "./components/item-selector-context";
 import { SyncIndicator } from "./components/sync-indicator";
 import { SyncWarn } from "./components/sync-warn";
-import { fetchClientInit, type ClientInitData } from "./api-client";
+import { apiUrl, fetchClientInit, type ClientInitData } from "./api-client";
 import styles from "./tailwind.css?url";
 
 function hideSplash() {
@@ -174,7 +174,10 @@ export function SignInModal({ onClose }: { onClose: () => void }) {
             </div>
             <button
               onClick={() => {
-                window.location.href = "/sign-in/steam/callback";
+                // Resolved against the API base URL, not the document origin:
+                // the SPA is served from a different origin than the Worker
+                // unless a reverse proxy fronts /sign-in.
+                window.location.href = apiUrl("/sign-in/steam/callback");
               }}
               style={{
                 background: "#1a1a2e",

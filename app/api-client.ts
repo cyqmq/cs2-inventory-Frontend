@@ -158,8 +158,9 @@ export interface ClientRules {
   inventoryItemEquipHideModel: string[];
   inventoryItemEquipHideType: string[];
   /**
-   * Upstream #527. The Worker does not implement these yet, so they stay
-   * optional and read as `undefined`, which the UI treats as "no limit".
+   * Upstream #527. The Worker sends both limits (already clamped to the game's
+   * hard maximum, so `-1` never reaches the client). They stay optional so an
+   * older Worker deployment keeps working; `AppProvider` falls back to `-1`.
    */
   inventoryItemMaxPatches?: number;
   inventoryItemMaxStickers?: number;
@@ -171,10 +172,11 @@ export interface ClientRules {
   viewerAttachmentsOnly: boolean;
   viewerCatalog?: ViewerCatalog;
   /**
-   * Upstream #631 has the server probe the viewer and publish the verdict as
-   * `rules.viewer`. This fork's Worker has no server-side probe, so the field
-   * is never sent and `AppProvider` derives an equivalent client-side status
-   * from `viewerCatalog` / `viewerEnabled` instead.
+   * Upstream #631: the server probes the viewer (catalog + public per-origin
+   * quota) and publishes the verdict. The Worker sends it, including
+   * `{ available: false, reason: "disabled" }` when the viewer is off. Kept
+   * optional for older Worker deployments, where `AppProvider` derives an
+   * equivalent status from `viewerCatalog` / `viewerEnabled` instead.
    */
   viewer?: ViewerServerStatus;
   viewerEmbedUrl: string;

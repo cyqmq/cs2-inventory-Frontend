@@ -111,11 +111,11 @@ export function AppProvider({
   rules,
   user
 }: AppProviderProps) {
-  // Upstream #527 added these two limits with a default of -1 ("use the game's
-  // limit") and #631 has the server probe the viewer and publish the verdict.
-  // This fork's Worker implements neither, so it never sends these fields;
-  // resolve them here so every consumer sees plain values. Viewer probing
-  // itself stays entirely client-side - nothing is reported anywhere.
+  // Upstream #527 added these two limits (default -1, "use the game's limit")
+  // and #631 has the server probe the viewer and publish the verdict. The
+  // Worker now sends all three; the fallbacks below only cover an older Worker
+  // deployment. Client-side viewer failures are still tracked locally (see
+  // viewerClientAvailability) and never reported anywhere.
   const resolvedRules: ResolvedClientRules = {
     ...rules,
     inventoryItemMaxPatches: rules.inventoryItemMaxPatches ?? -1,
