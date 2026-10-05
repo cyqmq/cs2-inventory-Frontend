@@ -6,7 +6,10 @@ import { minify_sync } from "terser";
 import ts from "typescript";
 import { defineConfig } from "vite";
 
-const workerUrl = process.env.WORKER_URL ?? "http://localhost:8787";
+const workerUrl = (process.env.WORKER_URL ?? "http://localhost:8787").replace(
+  "//localhost:",
+  "//127.0.0.1:"
+);
 
 export default defineConfig({
   base: "/",
@@ -16,6 +19,16 @@ export default defineConfig({
     // In browser mode the app calls the API through the same origin
     // (entry.client.tsx sets the API URL to window.location.origin), so route
     // the API paths to the local Cloudflare Worker during development.
+    proxy: {
+      "/api": workerUrl,
+      "/sign-in": workerUrl,
+      "/healthz": workerUrl
+    }
+  },
+  preview: {
+    port: 3000,
+    allowedHosts: [".monkeycode-ai.online"],
+    // Same-origin API routing for the production preview (`vite preview`).
     proxy: {
       "/api": workerUrl,
       "/sign-in": workerUrl,
