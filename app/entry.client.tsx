@@ -1,12 +1,8 @@
 import { config as fontAwesomeConfig } from "@fortawesome/fontawesome-svg-core";
-import { CS2Economy, CS2_ITEMS } from "@ianlucas/cs2-lib";
 import { Component, StrictMode, startTransition } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { HydratedRouter } from "react-router/dom";
 import { setApiBaseUrl } from "./api-client";
-import { clientGlobals } from "./globals";
-import { logError } from "./utils/monitoring";
-import { fetchTranslation } from "./utils/translation-api";
 
 (function hideSplashBeforeHydrate() {
   const el = document.getElementById("splash");
@@ -59,24 +55,9 @@ class RenderErrorBoundary extends Component<
 }
 
 function hydrate() {
-  const { itemTranslationMap } = clientGlobals;
-  if (
-    typeof itemTranslationMap !== "object" ||
-    itemTranslationMap === null ||
-    Object.keys(itemTranslationMap).length === 0
-  ) {
-    logError(
-      "[InventorySimulator] Item translation map is missing or empty. " +
-        "This usually happens when your browser cached a stale translation " +
-        "file during a deployment. Please clear your browser cache and reload."
-    );
-  }
-
-  CS2Economy.load({
-    items: CS2_ITEMS,
-    language: itemTranslationMap
-  });
-
+  // Economy data and item translations are loaded after mount by
+  // useTranslation / AppProvider (like upstream), so hydration must not wait
+  // for the large cs2-lib dataset to download and parse.
   fontAwesomeConfig.replacementClass = "";
 
   startTransition(() => {
@@ -96,15 +77,8 @@ function hydrate() {
 }
 
 async function loadTranslationsAndHydrate() {
-  const language = document.documentElement.dataset.language ?? "english";
-  try {
-    const { systemTranslationMap, itemTranslationMap } =
-      await fetchTranslation(language);
-    clientGlobals.systemTranslationMap = systemTranslationMap;
-    clientGlobals.itemTranslationMap = itemTranslationMap;
-  } catch (error) {
-    logError("[InventorySimulator] Failed to load translations.", { error });
-  }
+  // Translations and economy data load asynchronously after hydration (see
+  // useTranslation and AppProvider), so there is nothing to fetch here.
   hydrate();
 }
 
