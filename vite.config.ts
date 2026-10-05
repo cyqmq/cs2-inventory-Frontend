@@ -12,6 +12,7 @@ export default defineConfig({
   base: "/",
   server: {
     port: 3000,
+    allowedHosts: [".monkeycode-ai.online"],
     // In browser mode the app calls the API through the same origin
     // (entry.client.tsx sets the API URL to window.location.origin), so route
     // the API paths to the local Cloudflare Worker during development.
