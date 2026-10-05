@@ -35,17 +35,19 @@ function hideSplash() {
   }
 }
 
+// NOTE: fonts.googleapis.com is not reachable from this deployment's network.
+// Using the fonts.loli.net mirror (same css2 API). Keep in sync if upstream changes.
 const bodyFontUrl =
-  "https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wdth,wght@0,62.5..100,400..800;1,62.5..100,400..800&display=swap";
+  "https://fonts.loli.net/css2?family=Noto+Sans:ital,wdth,wght@0,62.5..100,400..800;1,62.5..100,400..800&display=swap";
 
 const displayFontUrl =
-  "https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600&display=swap";
+  "https://fonts.loli.net/css2?family=Exo+2:wght@300;400;600&display=swap";
 
 const displayFontIAmPayingFor = "https://use.typekit.net/ojo0ltc.css";
 
 export const links: LinksFunction = () => [
-  { rel: "preconnect", href: "https://fonts.googleapis.com" },
-  { rel: "preconnect", href: "https://fonts.gstatic.com" },
+  { rel: "preconnect", href: "https://fonts.loli.net" },
+  { rel: "preconnect", href: "https://gstatic.loli.net" },
   { rel: "stylesheet", href: bodyFontUrl },
   { rel: "stylesheet", href: displayFontUrl },
   { rel: "stylesheet", href: displayFontIAmPayingFor },

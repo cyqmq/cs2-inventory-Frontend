@@ -9,6 +9,7 @@ import { MouseEvent } from "react";
 import { Links, Scripts, useRouteError } from "react-router";
 import { ClientOnly } from "remix-utils/client-only";
 import { ApiActionResetInventoryUrl } from "~/data/api-urls";
+import { apiUrl } from "~/api-client";
 import { isOurHostname } from "~/utils/misc";
 import { confirm } from "./modal-generic";
 
@@ -27,7 +28,14 @@ export function ErrorBoundary() {
       })
     ) {
       try {
-        await fetch(ApiActionResetInventoryUrl, { method: "POST" });
+        // apiUrl() so this reaches the Worker in Electron mode (a bare
+        // relative path would hit the local asset server), and POST because the
+        // endpoint only mutates on POST — a state-changing GET is reachable
+        // cross-site through a top-level navigation.
+        await fetch(apiUrl(ApiActionResetInventoryUrl), {
+          method: "POST",
+          credentials: "include"
+        });
       } finally {
         window.location.assign("/");
       }

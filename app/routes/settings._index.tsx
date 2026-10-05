@@ -6,7 +6,7 @@
 import { faTrashCan } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useEffect, useState } from "react";
-import { useNavigate, useSubmit } from "react-router";
+import { useNavigate } from "react-router";
 import {
   useInventory,
   usePreferences,
@@ -28,7 +28,7 @@ import { backgrounds } from "~/data/backgrounds";
 import { languages } from "~/data/languages";
 import { SyncAction } from "~/data/sync";
 import { ApiActionPreferencesUrl } from "~/data/api-urls";
-import { setApiBaseUrl as setClientApiBaseUrl } from "~/api-client";
+import { apiUrl, setApiBaseUrl as setClientApiBaseUrl } from "~/api-client";
 
 export default function Settings() {
   const {
@@ -77,25 +77,37 @@ export default function Settings() {
     }
   }
 
-  const submit = useSubmit();
   const navigate = useNavigate();
 
-  function handleSubmit() {
-    submit(
-      {
-        background,
-        hideFilters,
-        hideFreeItems,
-        hideNewItemLabel,
-        language,
-        prefer2dStickerEditor,
-        statsForNerds
-      },
-      {
-        action: ApiActionPreferencesUrl,
-        method: "POST"
+  async function handleSubmit() {
+    try {
+      const form = new URLSearchParams();
+      form.set("background", background ?? "");
+      form.set("hideFilters", String(hideFilters));
+      form.set("hideFreeItems", String(hideFreeItems));
+      form.set("hideNewItemLabel", String(hideNewItemLabel));
+      form.set("language", language ?? "");
+      form.set("prefer2dStickerEditor", String(prefer2dStickerEditor));
+      form.set("statsForNerds", String(statsForNerds));
+      // Post directly to the Worker API. We must NOT use `useSubmit` here: in this
+      // SPA the catch-all route `routes/$` matches `/api/action/preferences`, and
+      // React Router then errors ("Route ... does not have a clientAction") without
+      // ever sending the request. A plain fetch keeps the request out of the router.
+      const response = await fetch(apiUrl(ApiActionPreferencesUrl), {
+        method: "POST",
+        body: form,
+        credentials: "include",
+        redirect: "follow"
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to save preferences: ${response.status}`);
       }
-    );
+      // The Worker persists the language/preferences to the session; reload so
+      // `/api/init` re-reads them and the UI language updates immediately.
+      window.location.reload();
+    } catch (error) {
+      console.error("Failed to save preferences:", error);
+    }
   }
 
   async function handleRemoveAllItems() {

@@ -1,0 +1,19 @@
+{
+  "name": "CS2 Inventory",
+  "short_name": "CS2 Inv",
+  "description": "CS2 inventory and loadout manager",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#101418",
+  "theme_color": "#101418",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon",
+      "purpose": "any"
+    }
+  ]
+}

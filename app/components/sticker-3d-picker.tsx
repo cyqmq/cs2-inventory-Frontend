@@ -10,7 +10,11 @@ import {
   CS2Economy,
   CS2EconomyItem,
   CS2InventoryItem,
-  getNextStickerSchema
+  CS2_STICKER_OFFSET_FACTOR,
+  CS2_STICKER_WEAR_FACTOR,
+  getNextStickerSchema,
+  roundToFactor,
+  snapStickerRotation
 } from "@ianlucas/cs2-lib";
 import clsx from "clsx";
 import {
@@ -44,6 +48,30 @@ import { ViewerOverlay } from "./viewer-overlay";
 
 type Stickers = NonNullable<CS2BaseInventoryItem["stickers"]>;
 type Sticker = Stickers[string];
+
+/**
+ * The 3D viewer reports sticker placement as continuous floats (drag/place on
+ * the model). The backend only accepts values on the canonical grids
+ * (x/y: CS2_STICKER_OFFSET_FACTOR, wear: CS2_STICKER_WEAR_FACTOR,
+ * rotation: 0.5 steps), so snap every viewer-produced value back to a valid
+ * grid point before it reaches inventory state / the sync payload.
+ */
+function sanitizeSticker(sticker: Sticker): Sticker {
+  const next = { ...sticker };
+  if (next.x !== undefined) {
+    next.x = roundToFactor(next.x, CS2_STICKER_OFFSET_FACTOR);
+  }
+  if (next.y !== undefined) {
+    next.y = roundToFactor(next.y, CS2_STICKER_OFFSET_FACTOR);
+  }
+  if (next.rotation !== undefined) {
+    next.rotation = snapStickerRotation(next.rotation);
+  }
+  if (next.wear !== undefined) {
+    next.wear = roundToFactor(next.wear, CS2_STICKER_WEAR_FACTOR);
+  }
+  return next;
+}
 
 function toArray(stickers: Stickers, maxSchema: number): Sticker[] {
   return CS2InventoryItem.stickersToArray(stickers, maxSchema);
@@ -146,7 +174,9 @@ function Sticker3dEditorOverlay({
     if (!viewerStatus.isUnavailable) {
       return;
     }
-    onChangeRef.current(toRecord(stickersRef.current));
+    onChangeRef.current(
+      toRecord(stickersRef.current.map(sanitizeSticker))
+    );
     onCloseRef.current();
   }, [viewerStatus.isUnavailable]);
 
@@ -158,7 +188,9 @@ function Sticker3dEditorOverlay({
       if (Date.now() - lastEditAtRef.current < FORM_ECHO_WINDOW_MS) {
         return;
       }
-      const incoming = toArray(item.stickers ?? {}, maxSchema);
+      const incoming = toArray(item.stickers ?? {}, maxSchema).map(
+        sanitizeSticker
+      );
       if (stickersEqual(stickersRef.current, incoming)) {
         return;
       }
@@ -199,7 +231,9 @@ function Sticker3dEditorOverlay({
   }
 
   function handleApply() {
-    onChangeRef.current(toRecord(stickersRef.current));
+    onChangeRef.current(
+      toRecord(stickersRef.current.map(sanitizeSticker))
+    );
     onCloseRef.current();
   }
 

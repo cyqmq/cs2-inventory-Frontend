@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, net } from "electron";
+import { app, BrowserWindow, ipcMain, net, shell } from "electron";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -21,9 +21,58 @@ const MIME_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml"
 };
 
-const ELECTRON_AUTH_SECRET = process.env.ELECTRON_AUTH_SECRET || "change-me-in-production";
+/**
+ * Shared secret with the Worker. It deliberately has no default value: a build
+ * that ships a placeholder lets anyone who reads the binary call
+ * `/api/auth/electron?steamId=<any>&secret=<placeholder>` and receive a session
+ * cookie for that Steam account. Fail closed instead.
+ */
+function getElectronAuthSecret(): string {
+  const secret = process.env.ELECTRON_AUTH_SECRET || readConfig().electronAuthSecret || "";
+  if (secret.trim() === "") {
+    throw new Error(
+      "ELECTRON_AUTH_SECRET is not configured. Set the ELECTRON_AUTH_SECRET environment variable (packaged builds) or electronAuthSecret in config.json (dev) before using Steam sign-in."
+    );
+  }
+  return secret;
+}
 const STEAM_OPENID_SERVER = "https://steamcommunity.com/openid/login";
 const STEAM_ID_REGEX = /^https:\/\/steamcommunity\.com\/openid\/id\/(76561[0-9]{12})\/?$/;
+
+/**
+ * The only origins the app window is ever allowed to sit on: its own local
+ * server, and the Vite dev server.
+ *
+ * Anything else means the window has been navigated somewhere unexpected, and
+ * `webSecurity: true` means that page now holds a same-origin view of the
+ * session cookie and the preload bridge. Redirecting to `steamcommunity.com`
+ * would break that, so Steam sign-in deliberately does not happen inside the
+ * window: `steam-login` opens it in the user's real browser instead, and Steam
+ * sends them back to the loopback callback, which the app picks up via the
+ * `open-url` event (see `registerSteamCallbackInterception`).
+ */
+function isTrustedAppOrigin(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "http:") {
+    return false;
+  }
+  const host = parsed.hostname;
+  // The loopback server this process starts. Both spellings because a literal
+  // IPv6 host is bracketed in the URL.
+  if (host === "127.0.0.1" || host === "[::1]" || host === "localhost") {
+    return true;
+  }
+  try {
+    return new URL(VITE_DEV_SERVER_URL).hostname === host;
+  } catch {
+    return false;
+  }
+}
 
 function getConfigPath() {
   return path.join(app.getPath("userData"), "config.json");
@@ -51,30 +100,77 @@ let localServerPort: number | null = null;
 
 let callbackParams: Record<string, string> | null = null;
 
+/**
+ * Resolves a request path inside `root`, or undefined when it escapes.
+ * `path.join` happily collapses `..`, so a raw `GET /../../Users/x/.ssh/id_rsa`
+ * would otherwise be served from anywhere the process can read. Confining the
+ * resolved path back under `root` (with a separator so `/client-evil` does not
+ * pass for `/client`) is what actually stops it.
+ */
+function resolveStaticFile(root: string, requestPath: string): string | undefined {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(requestPath);
+  } catch {
+    return undefined;
+  }
+  // Reject NUL and backslashes outright: Windows treats "\\" as a separator, so
+  // a path the POSIX-only check above considers harmless can still traverse.
+  if (decoded.includes("\0") || decoded.includes("\\")) {
+    return undefined;
+  }
+  const relative = decoded.replace(/^\/+/, "");
+  const resolved = path.resolve(root, relative === "" ? "index.html" : relative);
+  const prefix = root.endsWith(path.sep) ? root : root + path.sep;
+  if (resolved !== root && !resolved.startsWith(prefix)) {
+    return undefined;
+  }
+  return resolved;
+}
+
 function startLocalServer(clientDir: string): Promise<number> {
   return new Promise((resolve) => {
+    const root = path.resolve(clientDir);
     const server = http.createServer((req, res) => {
-      const urlPath = (req.url || "").split("?")[0];
+      const rawUrl = req.url || "/";
+      const urlPath = rawUrl.split("?")[0].split("#")[0];
       if (urlPath === "/steam-callback") {
-        const query = new URL(req.url || "", "http://localhost").searchParams;
+        const query = new URL(rawUrl, "http://localhost").searchParams;
         callbackParams = {};
         for (const [k, v] of query.entries()) {
           if (k.startsWith("openid.")) callbackParams[k] = v;
         }
         res.writeHead(200, { "Content-Type": "text/html" });
         res.end("<html><body style='background:#1c1c1c;color:#f5f5f5;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'><div>Verifying Steam login...</div></body></html>");
+        // Steam completes the flow by redirecting the *system browser* here, and
+        // this loopback server is what receives it — Windows cannot register an
+        // `http://` protocol handler, so OS interception is not an option. Drive
+        // the verification directly instead of relying on the app window to
+        // navigate here.
+        const port = localServerPort;
+        if (port === null) {
+          res.writeHead(503, { "Content-Type": "text/html" });
+          res.end("<html><body>Callback server unavailable. Return to the app.</body></html>");
+          return;
+        }
+        void handleSteamCallback(`http://127.0.0.1:${port}/steam-callback`);
         return;
       }
-      const filePath = path.join(clientDir, urlPath === "/" ? "index.html" : urlPath);
-      const ext = path.extname(filePath);
-      const mime = MIME_TYPES[ext] || "application/octet-stream";
+      const filePath = resolveStaticFile(root, urlPath);
       const headers: Record<string, string> = {
-        "Content-Type": mime,
+        "Content-Type": "text/html",
         "Cache-Control": "no-store"
       };
+      if (filePath === undefined) {
+        res.writeHead(403, headers);
+        res.end("Forbidden");
+        return;
+      }
+      const mime = MIME_TYPES[path.extname(filePath)] || "application/octet-stream";
+      headers["Content-Type"] = mime;
       fs.readFile(filePath, (err, data) => {
         if (err) {
-          fs.readFile(path.join(clientDir, "index.html"), (err2, data2) => {
+          fs.readFile(path.join(root, "index.html"), (err2, data2) => {
             if (err2) {
               res.writeHead(404, headers);
               res.end("Not found");
@@ -144,10 +240,19 @@ async function handleSteamCallback(url: string) {
   console.log("[CS2-MAIN] handleSteamCallback called, isSteamLogin:", isSteamLogin);
   if (!isSteamLogin || !mainWindow) return;
   const apiBaseUrl = getApiBaseUrl();
-  const port = localServerPort || 13579;
+  // The real listening port, never a fallback: a mismatched port would make the
+  // prefix check below fail and silently drop a legitimate login.
+  const port = localServerPort;
+  if (port === null) {
+    isSteamLogin = false;
+    steamLoginReject?.(new Error("Steam callback arrived before the callback server was listening"));
+    steamLoginResolve = null;
+    steamLoginReject = null;
+    return;
+  }
   const returnUrl = `http://127.0.0.1:${port}/steam-callback`;
-  console.log("[CS2-MAIN] callback url:", url);
-  console.log("[CS2-MAIN] expected prefix:", returnUrl);
+  // Never log the full URL: the query string carries one-time OpenID credentials.
+  console.log("[CS2-MAIN] callback received on expected prefix:", url.startsWith(returnUrl));
   if (!url.startsWith(returnUrl)) {
     console.log("[CS2-MAIN] URL prefix mismatch, ignoring");
     return;
@@ -165,7 +270,7 @@ async function handleSteamCallback(url: string) {
     let avatarUrl = "";
     try {
       const apiKeyResp = await net.fetch(
-        `${apiBaseUrl}/api/auth/electron-config?secret=${encodeURIComponent(ELECTRON_AUTH_SECRET)}`,
+        `${apiBaseUrl}/api/auth/electron-config?secret=${encodeURIComponent(getElectronAuthSecret())}`,
         { method: "GET", signal: AbortSignal.timeout(5000) }
       );
       if (apiKeyResp.ok) {
@@ -190,7 +295,7 @@ async function handleSteamCallback(url: string) {
 
     console.log("[CS2-MAIN] calling /api/auth/electron for steamId:", steamId);
     const sessionResp = await net.fetch(
-      `${apiBaseUrl}/api/auth/electron?steamId=${encodeURIComponent(steamId)}&secret=${encodeURIComponent(ELECTRON_AUTH_SECRET)}&nickname=${encodeURIComponent(nickname)}&avatar=${encodeURIComponent(avatarUrl)}`,
+      `${apiBaseUrl}/api/auth/electron?steamId=${encodeURIComponent(steamId)}&secret=${encodeURIComponent(getElectronAuthSecret())}&nickname=${encodeURIComponent(nickname)}&avatar=${encodeURIComponent(avatarUrl)}`,
       { method: "GET", signal: AbortSignal.timeout(10000) }
     );
     console.log("[CS2-MAIN] /api/auth/electron status:", sessionResp.status);
@@ -198,15 +303,11 @@ async function handleSteamCallback(url: string) {
       throw new Error(`Session creation failed: ${sessionResp.status}`);
     }
     const { sessionCookie } = await sessionResp.json() as { sessionCookie: string };
-    console.log("[CS2-MAIN] sessionCookie raw length:", sessionCookie.length);
-    console.log("[CS2-MAIN] sessionCookie raw prefix:", sessionCookie.substring(0, 30));
 
     const _prefix = "_session=";
     const _rawValue = sessionCookie.startsWith(_prefix)
       ? sessionCookie.substring(_prefix.length).split(";")[0]
       : sessionCookie;
-    console.log("[CS2-MAIN] rawValue length:", _rawValue.length);
-    console.log("[CS2-MAIN] rawValue prefix:", _rawValue.substring(0, 20));
 
     const _maxAgeMatch = sessionCookie.match(/Max-Age=(\d+)/i);
     const _maxAge = _maxAgeMatch ? parseInt(_maxAgeMatch[1], 10) : 2147483647;
@@ -223,17 +324,6 @@ async function handleSteamCallback(url: string) {
       expirationDate: _expirationDate
     });
     console.log("[CS2-MAIN] cookie set done");
-
-    // Verify cookie was stored
-    const storedCookies = await mainWindow.webContents.session.cookies.get({ url: apiBaseUrl, name: "_session" });
-    console.log("[CS2-MAIN] stored cookies count:", storedCookies.length);
-    if (storedCookies.length > 0) {
-      console.log("[CS2-MAIN] stored cookie name:", storedCookies[0].name);
-      console.log("[CS2-MAIN] stored cookie value length:", storedCookies[0].value.length);
-      console.log("[CS2-MAIN] stored cookie domain:", storedCookies[0].domain);
-      console.log("[CS2-MAIN] stored cookie sameSite:", storedCookies[0].sameSite);
-      console.log("[CS2-MAIN] stored cookie secure:", storedCookies[0].secure);
-    }
 
     isSteamLogin = false;
     console.log("[CS2-MAIN] loading URL http://127.0.0.1:" + port + "/");
@@ -263,7 +353,12 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      webSecurity: false
+      // Was `false`, which disabled the same-origin policy outright: any page
+      // the window was navigated to could read the app's origin, and with it the
+      // session cookie and the preload bridge. Steam sign-in used to rely on this
+      // to load steamcommunity.com in-window; that now happens in the system
+      // browser (see `steam-login`), so the exemption is not needed.
+      webSecurity: true
     },
     icon: isDev
       ? undefined
@@ -274,8 +369,39 @@ async function createWindow() {
     await mainWindow.webContents.session.clearServiceWorkers();
   } catch { /* ignore */ }
 
-  mainWindow.webContents.on("did-navigate", (_event, url) => {
-    handleSteamCallback(url);
+  // The app must never end up on a foreign origin. Anything that tries — an
+  // in-app link, an injected redirect, a malicious ad in a bundled page — is
+  // bounced to the user's browser instead, where it has no access to this
+  // session. The current trusted page is allowed to keep loading.
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (isTrustedAppOrigin(url)) {
+      return;
+    }
+    event.preventDefault();
+    console.log("[CS2-MAIN] blocked navigation to untrusted origin, opening externally");
+    void shell.openExternal(url);
+  });
+
+  // `will-redirect` covers the server-driven case that `will-navigate` misses:
+  // an HTTP 302 from the local server to somewhere else.
+  mainWindow.webContents.on("will-redirect", (event, url) => {
+    if (isTrustedAppOrigin(url)) {
+      return;
+    }
+    event.preventDefault();
+    console.log("[CS2-MAIN] blocked redirect to untrusted origin, opening externally");
+    void shell.openExternal(url);
+  });
+
+  // Opening a new window (target=_blank, window.open) is the same escape in a
+  // different shape: deny it and hand the URL to the real browser. `deny` for
+  // trusted origins too — a second Electron window would carry the same preload
+  // and session, which nothing in the app asks for.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (!isTrustedAppOrigin(url)) {
+      void shell.openExternal(url);
+    }
+    return { action: "deny" };
   });
 
   if (isDev) {
@@ -308,7 +434,13 @@ ipcMain.handle("get-config-path", () => {
 
 ipcMain.handle("steam-login", async () => {
   if (!mainWindow) throw new Error("No main window");
-  const port = localServerPort || 13579;
+  // The callback has to be served even in dev, where the app itself is loaded
+  // from Vite and the local server is otherwise never started.
+  if (localServerPort === null) {
+    await startLocalServer(path.join(__dirname, "..", "build", "client"));
+  }
+  const port = localServerPort;
+  if (port === null) throw new Error("Local callback server unavailable");
   const returnUrl = `http://127.0.0.1:${port}/steam-callback`;
 
   isSteamLogin = true;
@@ -323,7 +455,17 @@ ipcMain.handle("steam-login", async () => {
     steamUrl.searchParams.set("openid.return_to", returnUrl);
     steamUrl.searchParams.set("openid.identity", "http://specs.openid.net/auth/2.0/identifier_select");
     steamUrl.searchParams.set("openid.claimed_id", "http://specs.openid.net/auth/2.0/identifier_select");
-    mainWindow.loadURL(steamUrl.toString());
+
+    // In the system browser, not the app window: the navigation whitelist only
+    // admits loopback, and handing steamcommunity.com a same-origin view of the
+    // session cookie and preload bridge is exactly what webSecurity is there to
+    // prevent.
+    void shell.openExternal(steamUrl.toString()).catch((error: unknown) => {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.log("[CS2-MAIN] could not open browser for Steam login:", msg);
+      isSteamLogin = false;
+      reject(new Error(`Could not open browser for Steam login: ${msg}`));
+    });
 
     setTimeout(() => {
       if (isSteamLogin) {
@@ -334,7 +476,26 @@ ipcMain.handle("steam-login", async () => {
   });
 });
 
-app.whenReady().then(createWindow);
+/**
+ * Single-instance lock, so a second launch focuses the window already waiting
+ * for a Steam callback instead of starting a login that will never complete.
+ */
+function registerSingleInstance() {
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+    return false;
+  }
+  app.on("second-instance", () => {
+    if (mainWindow === null) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  });
+  return true;
+}
+
+if (registerSingleInstance()) {
+  app.whenReady().then(createWindow);
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
