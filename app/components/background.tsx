@@ -4,16 +4,39 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useMemo } from "react";
-import { backgrounds } from "~/data/backgrounds";
-import { random } from "~/utils/misc";
+import {
+  DEFAULT_BACKGROUND,
+  getBackgroundPreset,
+  randomGradientBackground
+} from "~/data/backgrounds";
 import { usePreferences } from "./app-context";
 
 export function Background() {
   const { background: current } = usePreferences();
 
-  const background = useMemo(() => {
-    return current ?? random(backgrounds).value;
+  const preset = useMemo(() => {
+    if (current === null) {
+      // No preference saved yet: use a fixed lightweight gradient so the first
+      // paint never waits on a full-screen video download.
+      return getBackgroundPreset(DEFAULT_BACKGROUND);
+    }
+    if (current === "") {
+      // The explicit "Random" option: pick a gradient, never a video, so the
+      // background stays free of large media by default.
+      return randomGradientBackground();
+    }
+    return getBackgroundPreset(current) ?? getBackgroundPreset(DEFAULT_BACKGROUND);
   }, [current]);
+
+  if (preset?.type === "gradient") {
+    return (
+      <div
+        className="fixed top-0 left-0 -z-10 h-screen w-screen opacity-50"
+        style={{ backgroundImage: preset.css }}
+        suppressHydrationWarning
+      />
+    );
+  }
 
   return (
     <video
@@ -23,7 +46,7 @@ export function Background() {
       loop
       muted
       onContextMenu={(event) => event.preventDefault()}
-      src={`/videos/bg-${background}.webm`}
+      src={`/videos/bg-${preset?.value ?? DEFAULT_BACKGROUND}.webm`}
       suppressHydrationWarning
     />
   );
