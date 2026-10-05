@@ -5,7 +5,6 @@
 
 import {
   countDecimals,
-  CS2_ITEMS,
   CS2_KEYCHAIN_POSITION_FACTOR,
   CS2_MAX_KEYCHAIN_SEED,
   CS2_MAX_SEED,
@@ -84,9 +83,12 @@ export function createItemHideFilter({
   };
 }
 
-export function updateEconomyLanguage(
+export async function updateEconomyLanguage(
   language: CS2ItemTranslationByLanguage[string]
 ) {
+  // Load the item catalog on demand so the initial bundle does not contain the
+  // large cs2-lib dataset. This runs after the app has hydrated and rendered.
+  const { CS2_ITEMS } = await import("@ianlucas/cs2-lib");
   CS2Economy.load({
     items: CS2_ITEMS,
     language

@@ -48,20 +48,7 @@ export default defineConfig({
       }
     }
   },
-  build: {
-    rolldownOptions: {
-      output: {
-        codeSplitting: {
-          groups: [
-            {
-              name: "cs2-lib",
-              test: /node_modules[\\/]@ianlucas[\\/]cs2-lib[\\/]/
-            }
-          ]
-        }
-      }
-    }
-  },
+  build: {},
   resolve: {
     tsconfigPaths: true
   },

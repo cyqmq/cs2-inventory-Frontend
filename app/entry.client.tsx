@@ -1,8 +1,11 @@
 import { config as fontAwesomeConfig } from "@fortawesome/fontawesome-svg-core";
+import { CS2Economy, CS2_ITEMS } from "@ianlucas/cs2-lib";
 import { Component, StrictMode, startTransition } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { HydratedRouter } from "react-router/dom";
 import { setApiBaseUrl } from "./api-client";
+import { clientGlobals } from "./globals";
+import { english } from "~/translations-items/english";
 
 (function hideSplashBeforeHydrate() {
   const el = document.getElementById("splash");
@@ -55,9 +58,14 @@ class RenderErrorBoundary extends Component<
 }
 
 function hydrate() {
-  // Economy data and item translations are loaded after mount by
-  // useTranslation / AppProvider (like upstream), so hydration must not wait
-  // for the large cs2-lib dataset to download and parse.
+  // The item definitions and the English item translations are now part of the
+  // small initial bundle (the huge cs2-lib chunk was split per language), so it
+  // is safe to load the economy synchronously before the first render.
+  clientGlobals.itemTranslationMap = english;
+  CS2Economy.load({
+    items: CS2_ITEMS,
+    language: english
+  });
   fontAwesomeConfig.replacementClass = "";
 
   startTransition(() => {
@@ -77,8 +85,6 @@ function hydrate() {
 }
 
 async function loadTranslationsAndHydrate() {
-  // Translations and economy data load asynchronously after hydration (see
-  // useTranslation and AppProvider), so there is nothing to fetch here.
   hydrate();
 }
 

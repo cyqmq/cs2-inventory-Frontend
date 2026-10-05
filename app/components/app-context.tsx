@@ -179,6 +179,9 @@ export function AppProvider({
   }, [user]);
 
   useEffect(() => {
+    if (Object.keys(translation.items).length === 0) {
+      return;
+    }
     updateEconomyLanguage(translation.items);
     reactSetInventory(
       (inventory) =>
