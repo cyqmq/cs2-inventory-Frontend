@@ -8,7 +8,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { apiGet } from "~/api-client";
 import { ApiAdminStatsUrl } from "~/data/api-urls";
-import { Modal, ModalHeader } from "~/components/modal";
 
 interface AdminItem {
   uid: number;
@@ -128,9 +127,7 @@ export default function AdminDashboard() {
   );
 
   return (
-    <Modal className="w-[min(96vw,1100px)]">
-      <ModalHeader title="Admin Dashboard" closeTo="/" />
-      <div className="px-3 pb-4">
+    <div className="mx-auto max-w-6xl px-6 py-10">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-white">Admin Dashboard</h1>
@@ -380,7 +377,6 @@ export default function AdminDashboard() {
           </div>
         </>
       )}
-      </div>
-    </Modal>
+    </div>
   );
 }
