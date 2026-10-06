@@ -146,6 +146,11 @@ export interface ClientRules {
   editHideId: number[];
   editHideModel: string[];
   editHideType: string[];
+  /**
+   * Subset of supported languages exposed in the language picker. Undefined
+   * means all languages are available (see ENABLED_LANGUAGES on the Worker).
+   */
+  enabledLanguages?: string[];
   inventoryItemAllowApplyPatch: boolean;
   inventoryItemAllowApplySticker: boolean;
   inventoryItemAllowEdit: boolean;

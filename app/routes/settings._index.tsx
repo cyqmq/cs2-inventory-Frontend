@@ -40,7 +40,7 @@ export default function Settings() {
     prefer2dStickerEditor: selectedPrefer2dStickerEditor,
     statsForNerds: selectedStatsForNerds
   } = usePreferences();
-  const { viewerEnabled } = useRules();
+  const { viewerEnabled, enabledLanguages } = useRules();
   const [inventory, setInventory] = useInventory();
   const translate = useTranslate();
   const sync = useSync();
@@ -57,6 +57,18 @@ export default function Settings() {
   );
   const [statsForNerds, setStatsForNerds] = useCheckbox(selectedStatsForNerds);
   const [volume, setVolume] = useStorageState("appVolume", 1);
+
+  const availableLanguages = languages.filter(
+    ({ name }) =>
+      enabledLanguages === undefined || enabledLanguages.includes(name)
+  );
+  // The current language must always be selectable, even when it was chosen
+  // before ENABLED_LANGUAGES narrowed the picker.
+  const displayLanguages = availableLanguages.some(
+    ({ name }) => name === selectedLanguage
+  )
+    ? availableLanguages
+    : languages.filter(({ name }) => name === selectedLanguage);
 
   const [serverUrl, setServerUrl] = useState("");
   const [configPath, setConfigPath] = useState("");
@@ -143,7 +155,7 @@ export default function Settings() {
         </SettingsLabel>
         <SettingsLabel label={translate("SettingsLanguage")}>
           <LanguageSelect
-            languages={languages.map(({ name, countries }) => ({
+            languages={displayLanguages.map(({ name, countries }) => ({
               name,
               country: countries[0]
             }))}

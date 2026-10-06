@@ -3,9 +3,9 @@ import { CS2Economy, CS2_ITEMS } from "@ianlucas/cs2-lib";
 import { Component, StrictMode, startTransition } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { HydratedRouter } from "react-router/dom";
-import { setApiBaseUrl } from "./api-client";
+import { apiGet, setApiBaseUrl, type ClientInitData } from "./api-client";
 import { clientGlobals } from "./globals";
-import { english } from "~/translations-items/english";
+import { fetchTranslation } from "./utils/translation-api";
 
 (function hideSplashBeforeHydrate() {
   const el = document.getElementById("splash");
@@ -58,14 +58,6 @@ class RenderErrorBoundary extends Component<
 }
 
 function hydrate() {
-  // The item definitions and the English item translations are now part of the
-  // small initial bundle (the huge cs2-lib chunk was split per language), so it
-  // is safe to load the economy synchronously before the first render.
-  clientGlobals.itemTranslationMap = english;
-  CS2Economy.load({
-    items: CS2_ITEMS,
-    language: english
-  });
   fontAwesomeConfig.replacementClass = "";
 
   startTransition(() => {
@@ -85,6 +77,32 @@ function hydrate() {
 }
 
 async function loadTranslationsAndHydrate() {
+  // Load the deployment's default language (or the user's stored preference)
+  // before the first render instead of always downloading English first. The
+  // initial /api/init round-trip decides which item-translation chunk is
+  // needed; on failure English is fetched as a safe fallback.
+  let language = "english";
+  try {
+    const init = await apiGet<ClientInitData>("/api/init");
+    language = init.preferences?.language ?? "english";
+  } catch (error) {
+    console.error(
+      "[CS2-entry] /api/init failed, falling back to english:",
+      error
+    );
+  }
+  try {
+    const { systemTranslationMap, itemTranslationMap } =
+      await fetchTranslation(language);
+    clientGlobals.systemTranslationMap = systemTranslationMap;
+    clientGlobals.itemTranslationMap = itemTranslationMap;
+    CS2Economy.load({
+      items: CS2_ITEMS,
+      language: itemTranslationMap
+    });
+  } catch (error) {
+    console.error("[CS2-entry] translation load failed:", error);
+  }
   hydrate();
 }
 
