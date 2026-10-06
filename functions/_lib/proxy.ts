@@ -47,17 +47,13 @@ export async function proxyRequest(context: PagesEventContext): Promise<Response
   headers.delete("content-length");
 
   // The Worker needs the browser-facing host to derive the Steam OpenID
-  // callback URL. Cloudflare normally sends X-Forwarded-Host on incoming
-  // requests; fall back to the original Host when it is absent, then forward
-  // both through to the Worker (the backend's resolveSteamCallbackUrl reads
-  // X-Forwarded-Host first).
-  headers.set(
-    "X-Forwarded-Host",
-    headers.get("x-forwarded-host") ?? url.host
-  );
+  // callback URL. The value is always taken from the original request URL
+  // (the Pages host) and overwrites whatever the client sent, so a
+  // client-supplied X-Forwarded-Host cannot influence the callback.
+  headers.set("X-Forwarded-Host", url.host);
   headers.set(
     "X-Forwarded-Proto",
-    headers.get("x-forwarded-proto") ?? url.protocol.replace(":", "")
+    url.protocol.replace(":", "")
   );
 
   const init: RequestInit = {

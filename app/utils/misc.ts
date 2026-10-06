@@ -37,8 +37,17 @@ export function isOurHostname() {
   );
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function colorText(input: string) {
-  return input.replace(/{(\w+)}([^{}]*)/g, (_, color, text) => {
+  return escapeHtml(input).replace(/{(\w+)}([^{}]*)/g, (_, color, text) => {
     return `<span style="color: ${color};">${text}</span>`;
   });
 }

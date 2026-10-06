@@ -21,17 +21,18 @@ const forwardedProxy: ProxyOptions = {
   target: workerUrl,
   configure: (proxy) => {
     proxy.on("proxyReq", (proxyReq, req) => {
-      const forwardedHost =
-        req.headers["x-forwarded-host"] ?? req.headers.host;
+      // The browser-facing Host is the only value the backend may trust for
+      // Steam callback derivation. A client-supplied X-Forwarded-Host must not
+      // win over it, so it is always overwritten with req.headers.host.
+      const forwardedHost = req.headers.host;
       if (forwardedHost !== undefined) {
         proxyReq.setHeader("X-Forwarded-Host", String(forwardedHost));
       }
       const forwardedProto =
-        req.headers["x-forwarded-proto"] ??
-        (String(forwardedHost ?? "").includes("localhost") ||
+        String(forwardedHost ?? "").includes("localhost") ||
         String(forwardedHost ?? "").includes("127.0.0.1")
           ? "http"
-          : "https");
+          : "https";
       proxyReq.setHeader("X-Forwarded-Proto", forwardedProto);
     });
   }

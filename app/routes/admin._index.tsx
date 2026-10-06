@@ -3,11 +3,17 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { faArrowRotateRight, faChevronDown, faChevronUp } from "@fortawesome/free-solid-svg-icons";
+import {
+  faArrowRotateRight,
+  faChevronDown,
+  faChevronUp
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { Fragment, useEffect, useState, type ReactNode } from "react";
-import { apiGet } from "~/api-client";
+import { Fragment, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { apiUrl } from "~/api-client";
 import { ApiAdminStatsUrl } from "~/data/api-urls";
+
+const ADMIN_TOKEN_STORAGE_KEY = "adminToken";
 
 interface AdminItem {
   uid: number;
@@ -50,6 +56,14 @@ interface AdminStatsResponse {
   };
   users: AdminUser[];
 }
+
+type LoadStatus =
+  | "idle"
+  | "loading"
+  | "ready"
+  | "unauthorized"
+  | "disabled"
+  | "error";
 
 function formatNumber(value: number) {
   return value.toLocaleString("en-US");
@@ -102,24 +116,74 @@ const tdClass = "px-4 py-2 text-sm text-neutral-200";
 export default function AdminDashboard() {
   const [data, setData] = useState<AdminStatsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<LoadStatus>("idle");
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
+  const [token, setToken] = useState<string>(
+    () => sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) ?? ""
+  );
+  const [tokenInput, setTokenInput] = useState("");
 
   async function load() {
-    setLoading(true);
+    setStatus("loading");
     setError(null);
     try {
-      setData(await apiGet<AdminStatsResponse>(ApiAdminStatsUrl));
+      const headers: Record<string, string> = {};
+      if (token !== "") {
+        headers.Authorization = `Bearer ${token}`;
+      }
+      const response = await fetch(apiUrl(ApiAdminStatsUrl), {
+        credentials: "include",
+        headers
+      });
+      if (response.status === 401) {
+        setData(null);
+        setStatus("unauthorized");
+        return;
+      }
+      if (response.status === 403) {
+        setData(null);
+        setStatus("disabled");
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(
+          `API GET ${ApiAdminStatsUrl} failed: ${response.status}`
+        );
+      }
+      setData((await response.json()) as AdminStatsResponse);
+      setStatus("ready");
     } catch (err) {
+      setData(null);
+      setStatus("error");
       setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
     }
   }
 
   useEffect(() => {
+    if (token !== "" && status === "idle") {
+      void load();
+    }
+  }, [token]);
+
+  function handleTokenSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = tokenInput.trim();
+    if (trimmed === "") {
+      return;
+    }
+    sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, trimmed);
+    setToken(trimmed);
+    setTokenInput("");
     void load();
-  }, []);
+  }
+
+  function handleSignOut() {
+    sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+    setToken("");
+    setTokenInput("");
+    setData(null);
+    setStatus("idle");
+  }
 
   const maxDayCount = Math.max(
     1,
@@ -135,18 +199,29 @@ export default function AdminDashboard() {
             Users, inventory and API usage overview.
           </p>
         </div>
-        <button
-          className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-200 transition-colors hover:bg-white/10 disabled:opacity-50"
-          disabled={loading}
-          onClick={load}
-          type="button"
-        >
-          <FontAwesomeIcon
-            className={loading ? "animate-spin" : undefined}
-            icon={faArrowRotateRight}
-          />
-          <span className="ml-2">Refresh</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {token !== "" && status !== "idle" ? (
+            <button
+              className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-200 transition-colors hover:bg-white/10"
+              onClick={handleSignOut}
+              type="button"
+            >
+              Sign out
+            </button>
+          ) : null}
+          <button
+            className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-200 transition-colors hover:bg-white/10 disabled:opacity-50"
+            disabled={status === "loading"}
+            onClick={() => void load()}
+            type="button"
+          >
+            <FontAwesomeIcon
+              className={status === "loading" ? "animate-spin" : undefined}
+              icon={faArrowRotateRight}
+            />
+            <span className="ml-2">Refresh</span>
+          </button>
+        </div>
       </div>
 
       {error !== null && (
@@ -155,15 +230,60 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {data === null ? (
-        <div className="py-16 text-center text-sm text-neutral-400">
-          {loading ? "Loading..." : "No data"}
+      {status === "unauthorized" || (token === "" && status === "idle") ? (
+        <div className="rounded-lg border border-white/10 bg-white/5 p-6">
+          <h2 className="text-lg font-semibold text-white">Admin access</h2>
+          <p className="mt-1 text-sm text-neutral-400">
+            Enter the admin token to view the dashboard.
+          </p>
+          <form className="mt-4 flex max-w-md gap-2" onSubmit={handleTokenSubmit}>
+            <input
+              autoFocus
+              className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-blue-500/50"
+              onChange={(event) => setTokenInput(event.target.value)}
+              placeholder="Admin token"
+              type="password"
+              value={tokenInput}
+            />
+            <button
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
+              disabled={tokenInput.trim() === ""}
+              type="submit"
+            >
+              Sign in
+            </button>
+          </form>
         </div>
-      ) : (
+      ) : null}
+
+      {status === "disabled" ? (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          Admin dashboard is disabled. Set the{" "}
+          <code className="font-mono text-xs">ADMIN_API_TOKEN</code> environment
+          variable on the API Worker to enable it.
+        </div>
+      ) : null}
+
+      {status === "loading" && data === null ? (
+        <div className="py-16 text-center text-sm text-neutral-400">
+          Loading...
+        </div>
+      ) : null}
+
+      {status === "error" ? (
+        <div className="py-16 text-center text-sm text-neutral-400">
+          Failed to load. Try refreshing.
+        </div>
+      ) : null}
+
+      {status === "ready" && data !== null ? (
         <>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <StatCard label="Total Users" value={data.stats.totalUsers} />
-            <StatCard label="Active Users (24h)" value={data.stats.activeUsers24h} />
+            <StatCard
+              label="Active Users (24h)"
+              value={data.stats.activeUsers24h}
+            />
             <StatCard label="Total API Calls" value={data.stats.totalApiCalls} />
             <StatCard label="API Calls (24h)" value={data.stats.apiCalls24h} />
           </div>
@@ -182,7 +302,10 @@ export default function AdminDashboard() {
                 <tbody>
                   {data.stats.apiCallsByRoute.length === 0 ? (
                     <tr>
-                      <td className={`${tdClass} py-6 text-center text-neutral-500`} colSpan={4}>
+                      <td
+                        className={`${tdClass} py-6 text-center text-neutral-500`}
+                        colSpan={4}
+                      >
                         No requests recorded yet.
                       </td>
                     </tr>
@@ -192,9 +315,15 @@ export default function AdminDashboard() {
                         className={index % 2 === 0 ? "bg-white/3" : undefined}
                         key={`${entry.method}-${entry.path}-${entry.status}-${index}`}
                       >
-                        <td className={`${tdClass} font-mono text-xs`}>{entry.method}</td>
-                        <td className={`${tdClass} font-mono text-xs break-all`}>{entry.path}</td>
-                        <td className={`${tdClass} font-mono text-xs`}>{entry.status}</td>
+                        <td className={`${tdClass} font-mono text-xs`}>
+                          {entry.method}
+                        </td>
+                        <td className={`${tdClass} font-mono text-xs break-all`}>
+                          {entry.path}
+                        </td>
+                        <td className={`${tdClass} font-mono text-xs`}>
+                          {entry.status}
+                        </td>
                         <td className={`${tdClass} text-right font-semibold`}>
                           {formatNumber(entry.count)}
                         </td>
@@ -254,7 +383,10 @@ export default function AdminDashboard() {
                 <tbody>
                   {data.users.length === 0 ? (
                     <tr>
-                      <td className={`${tdClass} py-6 text-center text-neutral-500`} colSpan={6}>
+                      <td
+                        className={`${tdClass} py-6 text-center text-neutral-500`}
+                        colSpan={6}
+                      >
                         No users yet.
                       </td>
                     </tr>
@@ -294,10 +426,14 @@ export default function AdminDashboard() {
                             <td className={`${tdClass} text-right`}>
                               {formatNumber(user.equippedCount)}
                             </td>
-                            <td className={`${tdClass} text-right font-mono text-xs`}>
+                            <td
+                              className={`${tdClass} text-right font-mono text-xs`}
+                            >
                               {user.inventoryVersion}
                             </td>
-                            <td className={`${tdClass} text-right text-xs text-neutral-400`}>
+                            <td
+                              className={`${tdClass} text-right text-xs text-neutral-400`}
+                            >
                               {formatDate(user.lastSeen)}
                             </td>
                             <td className={`${tdClass} text-right`}>
@@ -318,36 +454,62 @@ export default function AdminDashboard() {
                                   <table className="w-full">
                                     <thead>
                                       <tr>
-                                        <th className={`${thClass} text-left`}>Item</th>
-                                        <th className={`${thClass} text-right`}>Wear</th>
-                                        <th className={`${thClass} text-right`}>StatTrak</th>
-                                        <th className={`${thClass} text-right`}>Stickers</th>
-                                        <th className={`${thClass} text-right`}>Keychains</th>
-                                        <th className={`${thClass} text-right`}>Name Tag</th>
-                                        <th className={`${thClass} text-right`}>Equipped</th>
+                                        <th className={`${thClass} text-left`}>
+                                          Item
+                                        </th>
+                                        <th className={`${thClass} text-right`}>
+                                          Wear
+                                        </th>
+                                        <th className={`${thClass} text-right`}>
+                                          StatTrak
+                                        </th>
+                                        <th className={`${thClass} text-right`}>
+                                          Stickers
+                                        </th>
+                                        <th className={`${thClass} text-right`}>
+                                          Keychains
+                                        </th>
+                                        <th className={`${thClass} text-right`}>
+                                          Name Tag
+                                        </th>
+                                        <th className={`${thClass} text-right`}>
+                                          Equipped
+                                        </th>
                                       </tr>
                                     </thead>
                                     <tbody>
                                       {user.items.map((item) => (
                                         <tr key={item.uid}>
-                                          <td className={`${tdClass} text-left font-medium text-white`}>
+                                          <td
+                                            className={`${tdClass} text-left font-medium text-white`}
+                                          >
                                             {item.name}
                                           </td>
-                                          <td className={`${tdClass} text-right font-mono text-xs`}>
+                                          <td
+                                            className={`${tdClass} text-right font-mono text-xs`}
+                                          >
                                             {formatWear(item.wear)}
                                           </td>
-                                          <td className={`${tdClass} text-right font-mono text-xs`}>
+                                          <td
+                                            className={`${tdClass} text-right font-mono text-xs`}
+                                          >
                                             {item.statTrak !== undefined
                                               ? formatNumber(item.statTrak)
                                               : "—"}
                                           </td>
-                                          <td className={`${tdClass} text-right font-mono text-xs`}>
+                                          <td
+                                            className={`${tdClass} text-right font-mono text-xs`}
+                                          >
                                             {item.stickerCount}
                                           </td>
-                                          <td className={`${tdClass} text-right font-mono text-xs`}>
+                                          <td
+                                            className={`${tdClass} text-right font-mono text-xs`}
+                                          >
                                             {item.keychainCount}
                                           </td>
-                                          <td className={`${tdClass} text-right text-xs text-amber-200/80`}>
+                                          <td
+                                            className={`${tdClass} text-right text-xs text-amber-200/80`}
+                                          >
                                             {item.nameTag ?? "—"}
                                           </td>
                                           <td className={`${tdClass} text-right`}>
@@ -376,7 +538,7 @@ export default function AdminDashboard() {
             </TableShell>
           </div>
         </>
-      )}
+      ) : null}
     </div>
   );
 }
