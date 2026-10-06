@@ -45,7 +45,14 @@ export default function Settings() {
   const translate = useTranslate();
   const sync = useSync();
 
-  const [background, setBackground] = useState(selectedBackground ?? "");
+  // A previously saved video background (no longer shipped) is not a valid
+  // option; fall back to Random so saving settings never submits an invalid
+  // value that the Worker would reject.
+  const [background, setBackground] = useState(
+    backgrounds.some(({ value }) => value === selectedBackground)
+      ? selectedBackground ?? ""
+      : ""
+  );
   const [hideFilters, setHideFilters] = useCheckbox(selectedHideFilters);
   const [hideFreeItems, setHideFreeItems] = useCheckbox(selectedHideFreeItems);
   const [hideNewItemLabel, setHideNewItemLabel] = useCheckbox(

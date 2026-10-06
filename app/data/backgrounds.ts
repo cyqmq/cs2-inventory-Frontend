@@ -45,32 +45,14 @@ const gradientBackgrounds: GradientBackground[] = [
   }
 ];
 
-const videoBackgrounds: VideoBackground[] = [
-  { type: "video", label: "Ancient 1", value: "ancient" },
-  { type: "video", label: "Ancient 2", value: "cs2_ancient_t" },
-  { type: "video", label: "Anubis 1", value: "anubis" },
-  { type: "video", label: "Anubis 2", value: "cs2_anubis_a" },
-  { type: "video", label: "Anubis 3", value: "cs2_anubis_ct" },
-  { type: "video", label: "Anubis 4", value: "cs2_anubis_water" },
-  { type: "video", label: "Apollo", value: "apollo" },
-  { type: "video", label: "Blacksite", value: "blacksite" },
-  { type: "video", label: "Cobblestone", value: "cbble" },
-  { type: "video", label: "Chlorine", value: "chlorine" },
-  { type: "video", label: "County", value: "county" },
-  { type: "video", label: "Engage", value: "engage" },
-  { type: "video", label: "Guard", value: "guard" },
-  { type: "video", label: "Inferno 1", value: "cs2_inferno_a" },
-  { type: "video", label: "Inferno 2", value: "cs2_inferno_caverna" },
-  { type: "video", label: "Mutiny", value: "mutiny" },
-  { type: "video", label: "Nuke 1", value: "nuke" },
-  { type: "video", label: "Nuke 2", value: "cs2_nuke_outside" },
-  { type: "video", label: "Overpass", value: "cs2_overpass_monster" },
-  { type: "video", label: "Sirocco 1", value: "sirocco" },
-  { type: "video", label: "Sirocco 2", value: "sirocco_night" },
-  { type: "video", label: "Swamp", value: "swamp" },
-  { type: "video", label: "Train", value: "cs2_train" },
-  { type: "video", label: "Vertigo", value: "vertigo" }
-];
+/**
+ * No video backgrounds are shipped: this project has no `/videos/bg-*.webm`
+ * media files in the repository or in the deployed bundle, so they would render
+ * as broken/blank backgrounds. The type and the video branch in `Background`
+ * are kept so a future deployment that adds the actual video files can restore
+ * them here.
+ */
+const videoBackgrounds: VideoBackground[] = [];
 
 export const backgrounds: BackgroundPreset[] = [
   ...gradientBackgrounds,

@@ -13,10 +13,11 @@ import {
 } from "./backgrounds";
 
 describe("backgrounds", () => {
-  it("contains both gradient and video presets", () => {
-    const types = new Set(backgrounds.map((background) => background.type));
-    expect(types.has("gradient")).toBe(true);
-    expect(types.has("video")).toBe(true);
+  it("ships only gradient presets (no broken video files)", () => {
+    expect(backgrounds.length).toBeGreaterThan(0);
+    for (const background of backgrounds) {
+      expect(background.type).toBe("gradient");
+    }
   });
 
   it("defines a css value for every gradient preset", () => {
@@ -40,15 +41,15 @@ describe("backgrounds", () => {
 
   it("returns the correct preset type for known values", () => {
     expect(getBackgroundPreset("gradient-night")?.type).toBe("gradient");
-    expect(getBackgroundPreset("ancient")?.type).toBe("video");
   });
 
   it("returns undefined for unknown values", () => {
     expect(getBackgroundPreset("not-a-background")).toBeUndefined();
+    expect(getBackgroundPreset("ancient")).toBeUndefined();
   });
 
-  it("detects video backgrounds", () => {
-    expect(isVideoBackground("ancient")).toBe(true);
+  it("does not detect video backgrounds when none are shipped", () => {
+    expect(isVideoBackground("ancient")).toBe(false);
     expect(isVideoBackground("gradient-night")).toBe(false);
     expect(isVideoBackground(null)).toBe(false);
   });
